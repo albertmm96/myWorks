@@ -35,3 +35,7 @@
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# excluding build files #
+RazorPagesMovie/bin
+RazorPagesMovie/obj
