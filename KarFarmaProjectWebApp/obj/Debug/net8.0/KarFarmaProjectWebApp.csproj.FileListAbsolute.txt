@@ -32,3 +32,13 @@ C:\Users\albertoHP\Desktop\devProjects\myWorks\KarFarmaProjectWebApp\obj\Debug\n
 C:\Users\albertoHP\Desktop\devProjects\myWorks\KarFarmaProjectWebApp\obj\Debug\net8.0\KarFarmaProjectWebApp.pdb
 C:\Users\albertoHP\Desktop\devProjects\myWorks\KarFarmaProjectWebApp\obj\Debug\net8.0\KarFarmaProjectWebApp.genruntimeconfig.cache
 C:\Users\albertoHP\Desktop\devProjects\myWorks\KarFarmaProjectWebApp\obj\Debug\net8.0\ref\KarFarmaProjectWebApp.dll
+C:\dev\Debug\net8.0\appsettings.Development.json
+C:\dev\Debug\net8.0\appsettings.json
+C:\dev\Debug\net8.0\KarFarmaProjectWebApp.staticwebassets.runtime.json
+C:\dev\Debug\net8.0\KarFarmaProjectWebApp.staticwebassets.endpoints.json
+C:\dev\Debug\net8.0\KarFarmaProjectWebApp.exe
+C:\dev\Debug\net8.0\KarFarmaProjectWebApp.deps.json
+C:\dev\Debug\net8.0\KarFarmaProjectWebApp.runtimeconfig.json
+C:\dev\Debug\net8.0\KarFarmaProjectWebApp.dll
+C:\dev\Debug\net8.0\KarFarmaProjectWebApp.pdb
+C:\Users\albertoHP\Desktop\devProjects\myWorks\KarFarmaProjectWebApp\obj\Debug\net8.0\KarFarmaProjectWebApp.sourcelink.json

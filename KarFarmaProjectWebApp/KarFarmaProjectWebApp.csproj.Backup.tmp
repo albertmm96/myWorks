@@ -4,7 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <BaseOutputPath>C:\dev</BaseOutputPath>
+    <BaseOutputPath>C:\dev\Debug\net8.0\KarFarma</BaseOutputPath>
   </PropertyGroup>
 
 </Project>
