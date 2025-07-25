@@ -2,12 +2,15 @@
 //
 
 #include "AsebanSkyWatch.h"
-#include <QApplication>
-#include <QPushButton>
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QPushButton>
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
-    QPushButton button("Hello from Qt!");
-    button.show();
+
+    QPushButton bouton("Hello Qt 6!");
+    bouton.resize(200, 60);
+    bouton.show();
+
     return app.exec();
 }
