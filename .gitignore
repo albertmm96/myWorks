@@ -1,0 +1,3 @@
+# Ignore all log/ directories recursively
+**/.vs/
+**/out/
