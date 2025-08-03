@@ -20,7 +20,7 @@ endif()
 set(CMAKE_PREFIX_PATH "D:/MyApps/Qt/6.9.1/msvc2022_64")
 
 # 🧩 Recherche Qt Widgets
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Core Sql)
 
 # 🛠️ Active le MOC/UIC automatique si tu utilises .ui/rcc
 set(CMAKE_AUTOMOC ON)
@@ -28,4 +28,4 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 # 🔗 Lie Qt à ton exécutable
-target_link_libraries(AsebanSkyWatch PRIVATE Qt6::Widgets)
+target_link_libraries(AsebanSkyWatch PRIVATE Qt6::Widgets Qt6::Core Qt6::Sql)
