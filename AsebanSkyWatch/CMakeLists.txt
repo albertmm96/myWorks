@@ -8,24 +8,25 @@ endif()
 
 project("AsebanSkyWatch")
 
-# 📦 Ta cible existante (conserve le nom)
-add_executable(AsebanSkyWatch "AsebanSkyWatch.cpp" "AsebanSkyWatch.h")
-
-# ✅ Définis la version C++
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET AsebanSkyWatch PROPERTY CXX_STANDARD 20)
-endif()
-
-# ➕ Indique où trouver Qt (remplace si besoin avec ton dossier)
-set(CMAKE_PREFIX_PATH "D:/MyApps/Qt/6.9.1/msvc2022_64")
-
-# 🧩 Recherche Qt Widgets
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core Sql)
-
-# 🛠️ Active le MOC/UIC automatique si tu utilises .ui/rcc
+# activer le MOC/UIC automatique si on utilise .ui/rcc
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-# 🔗 Lie Qt à ton exécutable
-target_link_libraries(AsebanSkyWatch PRIVATE Qt6::Widgets Qt6::Core Qt6::Sql)
+# la cible existante (on conserve le nom)
+add_executable(AsebanSkyWatch "AsebanSkyWatch.cpp" "AsebanSkyWatch.h" "openSkyFetcher.h" "openSkyFetcher.cpp")
+
+# définir la version C++
+if (CMAKE_VERSION VERSION_GREATER 3.12)
+  set_property(TARGET AsebanSkyWatch PROPERTY CXX_STANDARD 20)
+endif()
+
+# indiquer où trouver le dossier Qt
+set(CMAKE_PREFIX_PATH "D:/MyApps/Qt/6.9.1/msvc2022_64")
+
+# chercher les packages Qt nécessaires au projet
+find_package(Qt6 REQUIRED COMPONENTS Widgets Core Sql Network)
+
+
+# lier Qt à son exécutable
+target_link_libraries(AsebanSkyWatch PRIVATE Qt6::Widgets Qt6::Core Qt6::Sql Qt6::Network)

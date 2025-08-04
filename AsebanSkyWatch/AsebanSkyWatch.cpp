@@ -2,6 +2,8 @@
 //
 
 #include "AsebanSkyWatch.h"
+#include "openSkyFetcher.h"
+
 #include <QApplication>
 #include <QPushButton>
 #include <QProcess>
@@ -9,6 +11,7 @@
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
 #include <QDateTime>
+
 
 // check if qt sql queries execute properly
 void runQuery(QSqlQuery& query, const QString& sql) {
@@ -64,6 +67,16 @@ int main(int argc, char* argv[]) {
             << "Sensor ID:" << query.value("sensor_id").toInt()
             << "Temp:" << query.value("temperature").toDouble();
     }
+
+    // fetching openSky data
+    OpenSkyFetcher* fetcher = new OpenSkyFetcher;
+    QObject::connect(fetcher, &OpenSkyFetcher::dataReady, [](const QJsonDocument& json) {
+        qDebug() << "Received OpenSky data:" << json;
+        });
+    QObject::connect(fetcher, &OpenSkyFetcher::fetchError, [](const QString& error) {
+        qWarning() << "OpenSky error:" << error;
+        });
+    fetcher->fetchLiveData();
     
     return app.exec();
 }
