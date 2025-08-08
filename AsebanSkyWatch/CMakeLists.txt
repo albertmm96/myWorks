@@ -14,7 +14,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 # la cible existante (on conserve le nom)
-add_executable(AsebanSkyWatch "AsebanSkyWatch.cpp" "AsebanSkyWatch.h" "openSkyFetcher.h" "openSkyFetcher.cpp")
+add_executable(AsebanSkyWatch "main.cpp" "main.h" "openSkyFetcher.h" "openSkyFetcher.cpp")
 
 # définir la version C++
 if (CMAKE_VERSION VERSION_GREATER 3.12)

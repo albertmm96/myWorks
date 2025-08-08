@@ -1,7 +1,7 @@
 ﻿// AsebanSkyWatch.cpp : définit le point d'entrée de l'application.
 //
 
-#include "AsebanSkyWatch.h"
+#include "main.h"
 #include "openSkyFetcher.h"
 
 #include <QApplication>
@@ -68,15 +68,53 @@ int main(int argc, char* argv[]) {
             << "Temp:" << query.value("temperature").toDouble();
     }
 
-    // fetching openSky data
+    // Create the flights table
+    runQuery(query,
+        "CREATE TABLE IF NOT EXISTS flights ("
+        "icao24 TEXT, "
+        "callsign TEXT, "
+        "estDepartureAirport TEXT, "
+        "estArrivalAirport TEXT, "
+        "firstSeen INTEGER, "
+        "lastSeen INTEGER, "
+        "estDepartureAirportHorizDistance INTEGER, "
+        "estArrivalAirportHorizDistance INTEGER, "
+        "estDepartureAirportVertDistance INTEGER, "
+        "estArrivalAirportVertDistance INTEGER, "
+        "departureAirportCandidatesCount INTEGER, "
+        "arrivalAirportCandidatesCount INTEGER, "
+        "time TIMESTAMPTZ DEFAULT NOW());");
+
+    // Turn it into a hypertable
+    runQuery(query,
+        "SELECT create_hypertable('flights', 'time', if_not_exists => TRUE);");
+
+    // Create OpenSky fetcher
     OpenSkyFetcher* fetcher = new OpenSkyFetcher;
+
+    // Optional: connect signals for error and JSON output
     QObject::connect(fetcher, &OpenSkyFetcher::dataReady, [](const QJsonDocument& json) {
         qDebug() << "Received OpenSky data:" << json;
         });
     QObject::connect(fetcher, &OpenSkyFetcher::fetchError, [](const QString& error) {
         qWarning() << "OpenSky error:" << error;
         });
-    fetcher->fetchLiveData();
+
+    // Define a time window for historical data
+    QString icao24 = "e49c0d";
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    qint64 end = now;          
+    qint64 begin = end - 21600;       // 6 hours before that = 6 x 3600 s
+
+    // Call Python script and insert into DB if successful
+    if (fetcher->runPythonFlightFetcher(icao24, begin, end)) {
+        QString jsonPath = QCoreApplication::applicationDirPath() + "/../../../flights.json";
+        fetcher->parseAndInsertFlights(jsonPath, db);
+    }
+
+    // (Optional) Still fetch live OpenSky data if needed
+    //fetcher->fetchLiveData();
+
     
     return app.exec();
 }
