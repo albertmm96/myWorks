@@ -4,7 +4,7 @@ import sys
 import time
 
 
-def load_credentials(file_path="openSkyRESTAPIcredentials.json"):
+def load_credentials(file_path="credentials.json"):
     with open(file_path, "r") as file:
         creds = json.load(file)
     return creds["clientId"], creds["clientSecret"]
