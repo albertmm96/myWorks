@@ -14,7 +14,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 # la cible existante (on conserve le nom)
-add_executable(AsebanSkyWatch "main.cpp" "main.h" "openSkyFetcher.h" "openSkyFetcher.cpp")
+add_executable(AsebanSkyWatch "src/main/main.cpp" "src/main/main.h" "src/backend/fetch/openSkyFetcher.h" "src/backend/fetch/openSkyFetcher.cpp")
 
 # définir la version C++
 if (CMAKE_VERSION VERSION_GREATER 3.12)
@@ -30,3 +30,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Core Sql Network)
 
 # lier Qt à son exécutable
 target_link_libraries(AsebanSkyWatch PRIVATE Qt6::Widgets Qt6::Core Qt6::Sql Qt6::Network)
+
+target_include_directories(AsebanSkyWatch PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/backend/fetch
+)

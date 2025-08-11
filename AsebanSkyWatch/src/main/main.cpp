@@ -47,45 +47,8 @@ int main(int argc, char* argv[]) {
     }
     
     QSqlQuery query;
-    // Create a Timescale hypertable
-    runQuery(query,
-        "CREATE TABLE IF NOT EXISTS sensor_data ("
-        "time TIMESTAMPTZ NOT NULL, "
-        "sensor_id INT, "
-        "temperature DOUBLE PRECISION);");
-    // Turn it into a hypertable (idempotent)
-    runQuery(query,
-        "SELECT create_hypertable('sensor_data', 'time', if_not_exists => TRUE);");
-    // Insert sample data
-    runQuery(query,
-        "INSERT INTO sensor_data (time, sensor_id, temperature) VALUES "
-        "(NOW(), 42, 23.1);");
-    // Read it back
-    runQuery(query, "SELECT * FROM sensor_data ORDER BY time DESC;");
-    while (query.next()) {
-        qDebug() << "Time:" << query.value("time").toDateTime()
-            << "Sensor ID:" << query.value("sensor_id").toInt()
-            << "Temp:" << query.value("temperature").toDouble();
-    }
 
-    // Create the flights table
-    runQuery(query,
-        "CREATE TABLE IF NOT EXISTS flights ("
-        "icao24 TEXT, "
-        "callsign TEXT, "
-        "estDepartureAirport TEXT, "
-        "estArrivalAirport TEXT, "
-        "firstSeen INTEGER, "
-        "lastSeen INTEGER, "
-        "estDepartureAirportHorizDistance INTEGER, "
-        "estArrivalAirportHorizDistance INTEGER, "
-        "estDepartureAirportVertDistance INTEGER, "
-        "estArrivalAirportVertDistance INTEGER, "
-        "departureAirportCandidatesCount INTEGER, "
-        "arrivalAirportCandidatesCount INTEGER, "
-        "time TIMESTAMPTZ DEFAULT NOW());");
-
-    // Turn it into a hypertable
+    // Create a flights hypertable
     runQuery(query,
         "SELECT create_hypertable('flights', 'time', if_not_exists => TRUE);");
 
@@ -111,10 +74,6 @@ int main(int argc, char* argv[]) {
         QString jsonPath = QCoreApplication::applicationDirPath() + "/../../../flights.json";
         fetcher->parseAndInsertFlights(jsonPath, db);
     }
-
-    // (Optional) Still fetch live OpenSky data if needed
-    //fetcher->fetchLiveData();
-
     
     return app.exec();
 }

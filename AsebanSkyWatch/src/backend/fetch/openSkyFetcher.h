@@ -11,7 +11,6 @@ class OpenSkyFetcher : public QObject {
 
 public:
     explicit OpenSkyFetcher(QObject* parent = nullptr);
-    void fetchLiveData();
     bool runPythonFlightFetcher(const QString& icao24, qint64 begin, qint64 end);
     void parseAndInsertFlights(const QString& filePath, QSqlDatabase& db);
 

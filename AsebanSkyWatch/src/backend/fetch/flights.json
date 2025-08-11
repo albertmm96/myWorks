@@ -1,0 +1,16 @@
+[
+  {
+    "icao24": "e49c0d",
+    "firstSeen": 1754934388,
+    "estDepartureAirport": "SBSP",
+    "lastSeen": 1754939935,
+    "estArrivalAirport": null,
+    "callsign": "PPAFL   ",
+    "estDepartureAirportHorizDistance": 389,
+    "estDepartureAirportVertDistance": 47,
+    "estArrivalAirportHorizDistance": null,
+    "estArrivalAirportVertDistance": null,
+    "departureAirportCandidatesCount": 79,
+    "arrivalAirportCandidatesCount": 0
+  }
+]

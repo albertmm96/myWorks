@@ -17,18 +17,11 @@ OpenSkyFetcher::OpenSkyFetcher(QObject* parent) : QObject(parent) {
         this, &OpenSkyFetcher::onReplyFinished);
 }
 
-void OpenSkyFetcher::fetchLiveData() {
-    QUrl url("https://opensky-network.org/api/states/all");
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    manager.get(request);
-}
-
 bool OpenSkyFetcher::runPythonFlightFetcher(const QString& icao24, qint64 begin, qint64 end)
 {
     QString basePath = QCoreApplication::applicationDirPath();
-    QString scriptPath = basePath + "/../../../opensky_oauth_client.py";
-    QString jsonPath = basePath + "/../../../flights.json";
+    QString scriptPath = basePath + "/../../../src/backend/fetch/opensky_oauth_client.py";
+    QString jsonPath = basePath + "/../../../src/backend/fetch/flights.json";
 
     QString pyPath = "C:/Users/Utilisateur/AppData/Local/Programs/Python/Launcher/py.exe";  // actual py.exe
 

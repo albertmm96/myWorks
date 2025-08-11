@@ -4,7 +4,15 @@ import sys
 import time
 
 
-def load_credentials(file_path="credentials.json"):
+from pathlib import Path
+
+def load_credentials(file_path=None):
+    if file_path is None:
+        # Start from the folder containing this script
+        script_dir = Path(__file__).resolve().parent
+        # Go up 3 levels and into config/
+        file_path = script_dir.parent.parent.parent / "config" / "credentials.json"
+
     with open(file_path, "r") as file:
         creds = json.load(file)
     return creds["clientId"], creds["clientSecret"]
