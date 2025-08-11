@@ -10,6 +10,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QCoreApplication>
+#include <QDir>
 
 
 OpenSkyFetcher::OpenSkyFetcher(QObject* parent) : QObject(parent) {
@@ -20,8 +21,15 @@ OpenSkyFetcher::OpenSkyFetcher(QObject* parent) : QObject(parent) {
 bool OpenSkyFetcher::runPythonFlightFetcher(const QString& icao24, qint64 begin, qint64 end)
 {
     QString basePath = QCoreApplication::applicationDirPath();
-    QString scriptPath = basePath + "/../../../src/backend/fetch/opensky_oauth_client.py";
-    QString jsonPath = basePath + "/../../../src/backend/fetch/flights.json";
+    QDir dir(basePath);
+    // Go up 3 levels
+    dir.cdUp();
+    dir.cdUp();
+    dir.cdUp();
+    // Now go into /src/backend/fetch
+    dir.cd("src/backend/fetch");
+
+    QString scriptPath = "opensky_oauth_client.py";
 
     QString pyPath = "C:/Users/Utilisateur/AppData/Local/Programs/Python/Launcher/py.exe";  // actual py.exe
 
@@ -33,7 +41,8 @@ bool OpenSkyFetcher::runPythonFlightFetcher(const QString& icao24, qint64 begin,
     };
 
     QProcess process;
-    process.setWorkingDirectory(basePath + "/../../../");
+    QString workingDirectory = dir.absolutePath();
+    process.setWorkingDirectory(workingDirectory);
 
     qDebug() << "Running command:" << pyPath << args;
 
@@ -56,6 +65,7 @@ bool OpenSkyFetcher::runPythonFlightFetcher(const QString& icao24, qint64 begin,
     if (!output.isEmpty()) qDebug() << "Python output:" << output;
     if (!errors.isEmpty()) qWarning() << "Python errors:" << errors;
 
+    QString jsonPath = workingDirectory + "/flights.json";
     if (!QFile::exists(jsonPath)) {
         qWarning() << "flights.json not found at:" << jsonPath;
         return false;

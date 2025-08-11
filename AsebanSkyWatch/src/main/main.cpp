@@ -11,6 +11,7 @@
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
 #include <QDateTime>
+#include <QDir>
 
 
 // check if qt sql queries execute properly
@@ -71,7 +72,14 @@ int main(int argc, char* argv[]) {
 
     // Call Python script and insert into DB if successful
     if (fetcher->runPythonFlightFetcher(icao24, begin, end)) {
-        QString jsonPath = QCoreApplication::applicationDirPath() + "/../../../flights.json";
+        QDir dir(QCoreApplication::applicationDirPath());
+        // Go up 3 levels
+        dir.cdUp();
+        dir.cdUp();
+        dir.cdUp();
+        // Now go into /src/backend/fetch
+        dir.cd("src/backend/fetch");
+        QString jsonPath = dir.absolutePath() + "/flights.json";
         fetcher->parseAndInsertFlights(jsonPath, db);
     }
     
