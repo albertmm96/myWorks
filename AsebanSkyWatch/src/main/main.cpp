@@ -45,9 +45,26 @@ int main(int argc, char* argv[]) {
     
     QSqlQuery query;
 
-    // Create a flights hypertable
+    // Create the flights table
     runQuery(query,
-        "SELECT create_hypertable('flights', 'time', if_not_exists => TRUE);");
+        "CREATE TABLE IF NOT EXISTS flights ("
+        "icao24 TEXT, "
+        "callsign TEXT, "
+        "estDepartureAirport TEXT, "
+        "estArrivalAirport TEXT, "
+        "firstSeen INTEGER, "
+        "lastSeen INTEGER, "
+        "estDepartureAirportHorizDistance INTEGER, "
+        "estArrivalAirportHorizDistance INTEGER, "
+        "estDepartureAirportVertDistance INTEGER, "
+        "estArrivalAirportVertDistance INTEGER, "
+        "departureAirportCandidatesCount INTEGER, "
+        "arrivalAirportCandidatesCount INTEGER, "
+        "time TIMESTAMPTZ DEFAULT NOW());");
+
+    // Turn it into a hypertable
+    // Create a flights hypertable
+    runQuery(query,"SELECT create_hypertable('flights', 'time', if_not_exists => TRUE);");
 
     // Create OpenSky fetcher
     OpenSkyFetcher* fetcher = new OpenSkyFetcher;
