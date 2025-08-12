@@ -3,6 +3,7 @@
 
 #include "main.h"
 #include "openSkyFetcher.h"
+#include "mainwindow.h"
 
 #include <QApplication>
 #include <QPushButton>
@@ -24,11 +25,6 @@ void runQuery(QSqlQuery& query, const QString& sql) {
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
-
-    // test if qt display works
-    QPushButton bouton("Hello Qt 6!");
-    bouton.resize(200, 60);
-    bouton.show();
 
     // test if postgresql works
     QProcess process;
@@ -83,5 +79,9 @@ int main(int argc, char* argv[]) {
         fetcher->parseAndInsertFlights(jsonPath, db);
     }
     
+    // gui test
+    MainWindow w;
+    w.show();
+
     return app.exec();
 }
