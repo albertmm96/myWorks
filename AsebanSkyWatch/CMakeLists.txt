@@ -33,11 +33,17 @@ endif()
 set(CMAKE_PREFIX_PATH "D:/MyApps/Qt/6.9.1/msvc2022_64")
 
 # chercher les packages Qt nécessaires au projet
-find_package(Qt6 COMPONENTS Widgets Gui Core Sql Network REQUIRED)
+find_package(Qt6 COMPONENTS REQUIRED
+    Widgets Gui Core
+    Sql Network
+    WebChannel Positioning WebEngineCore WebEngineWidgets)
 
 
 # lier Qt à son exécutable
-target_link_libraries(AsebanSkyWatch PRIVATE Qt6::Widgets Qt6::Gui Qt6::Core Qt6::Sql Qt6::Network)
+target_link_libraries(AsebanSkyWatch PRIVATE 
+    Qt6::Widgets Qt6::Gui Qt6::Core
+    Qt6::Sql Qt6::Network
+    Qt6::WebChannel Qt6::Positioning Qt6::WebEngineCore Qt6::WebEngineWidgets)
 
 target_include_directories(AsebanSkyWatch PRIVATE
     ${CMAKE_SOURCE_DIR}/src/gui/views
