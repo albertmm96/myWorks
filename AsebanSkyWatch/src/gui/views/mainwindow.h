@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QWebEngineView>
 
 namespace Ui {
     class MainWindow;
@@ -16,4 +17,5 @@ public:
 
 private:
     Ui::MainWindow* ui;
+    QWebEngineView* webView;  // the map
 };
