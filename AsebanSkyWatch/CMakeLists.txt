@@ -22,7 +22,7 @@ add_executable(AsebanSkyWatch
     src/gui/views/mainwindow.cpp
     src/gui/views/mainwindow.h
     src/gui/views/mainwindow.ui
-)
+ "src/gui/controllers/bridge.h" "src/gui/controllers/bridge.cpp")
 
 # définir la version C++
 if (CMAKE_VERSION VERSION_GREATER 3.12)
@@ -47,5 +47,6 @@ target_link_libraries(AsebanSkyWatch PRIVATE
 
 target_include_directories(AsebanSkyWatch PRIVATE
     ${CMAKE_SOURCE_DIR}/src/gui/views
+    ${CMAKE_SOURCE_DIR}/src/gui/controllers
     ${CMAKE_SOURCE_DIR}/src/backend/fetch
 )

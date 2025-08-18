@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "bridge.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -40,7 +41,7 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       })
     });
 
-    // Expose a helper your C++ can call to re-center/zoom.
+    // expose a helper the C++ can call to re-center/zoom.
     window.qtCenterOn = function(lon, lat, zoom) {
       const view = map.getView();
       view.animate({
@@ -62,7 +63,20 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       liveSource.addFeature(feature);
     };
   </script>
-</body>
+  <script src="qrc:/qtwebchannel/qwebchannel.js"></script>
+  <script>
+    new QWebChannel(qt.webChannelTransport, function(channel) {
+      window.bridge = channel.objects.bridge;
+  
+      map.on('pointermove', (evt) => {
+        // epsg:3857 to project on a flat mercator map in meters
+        const [lon, lat] = ol.proj.toLonLat(evt.coordinate, 'EPSG:3857');
+        // send the position to C++
+        bridge.mouseMoved(lat, lon);
+      });
+    });
+  </script>
+</body>  
 </html>)HTML";
 
 MainWindow::MainWindow(QWidget* parent)
@@ -86,16 +100,19 @@ MainWindow::MainWindow(QWidget* parent)
     central->setLayout(layout);
     setCentralWidget(central);
 
+	// we create a web channel to communicate with the map
+    auto page = new QWebEnginePage(webView);
+    webView->setPage(page);
+    auto channel = new QWebChannel(webView);
+    auto bridge = new Bridge(webView);
+    channel->registerObject(QStringLiteral("bridge"), bridge);
+    page->setWebChannel(channel);
+
     // we load OpenLayers HTML. Base URL helps resolve relative URLs if we add assets.
     webView->setHtml(QString::fromUtf8(kMapHtml), QUrl("https://local.qt/"));
 
     // we make sure the resolution is not downscaled
     webView->setZoomFactor(1.0);  // 1.0 = 100%
-
-    // what the page thinks the dpr is
-    //webView->page()->runJavaScript("window.devicePixelRatio", [](const QVariant& v) {
-    //    qDebug() << "DPR in WebEngine =" << v;
-    //    });
 
     // just to try: using fetch button to recenter on Paris
     if (ui->fetchButton) {

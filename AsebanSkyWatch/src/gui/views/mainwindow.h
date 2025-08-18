@@ -2,6 +2,7 @@
 
 #include <QMainWindow>
 #include <QWebEngineView>
+#include <QWebChannel>
 
 namespace Ui {
     class MainWindow;
