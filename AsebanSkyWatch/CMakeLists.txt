@@ -24,6 +24,13 @@ add_executable(AsebanSkyWatch
     src/gui/views/mainwindow.ui
  "src/gui/controllers/bridge.h" "src/gui/controllers/bridge.cpp" "src/utils/tile_math.h" "src/utils/tile_math.cpp" "src/backend/services/LiveFlightsService.h" "src/backend/services/LiveFlightsService.cpp")
 
+ add_custom_command(TARGET AsebanSkyWatch POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E echo "Copying credentials.json to $<TARGET_FILE_DIR:AsebanSkyWatch>"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${CMAKE_SOURCE_DIR}/config/credentials.json"
+    "$<TARGET_FILE_DIR:AsebanSkyWatch>/credentials.json"
+)
+
 # définir la version C++
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET AsebanSkyWatch PROPERTY CXX_STANDARD 20)

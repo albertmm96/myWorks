@@ -7,6 +7,7 @@
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QFile>
+#include <QDir>
 
 static const char* kMapHtml = R"HTML(<!DOCTYPE html>
 <html>
@@ -143,6 +144,31 @@ MainWindow::MainWindow(QWidget* parent)
 
     // backend wiring
     auto* fetcher = new OpenSkyFetcher(this);
+
+    // Log where the exe is
+    qInfo() << "appDir =" << QCoreApplication::applicationDirPath();
+
+    QStringList candidates = {
+        QCoreApplication::applicationDirPath() + "/credentials.json",                          // next to exe
+        QDir(QCoreApplication::applicationDirPath()).filePath("../../config/credentials.json"),
+        QDir(QCoreApplication::applicationDirPath()).filePath("../config/credentials.json"),
+        QDir::current().filePath("config/credentials.json")                                    // current working dir
+    };
+    QString envPath = qEnvironmentVariable("OPENSKY_CREDENTIALS");
+    if (!envPath.isEmpty()) candidates.prepend(envPath);
+
+    QString chosen;
+    for (const QString& p : candidates) {
+        if (QFile::exists(p)) { chosen = p; break; }
+    }
+    if (chosen.isEmpty()) {
+        qWarning() << "credentials.json not found. Tried:" << candidates;
+    }
+    else {
+        qInfo() << "Using credentials at:" << chosen;
+        fetcher->setCredentialsPath(chosen);   // <-- set *after* we found it
+    }
+
     auto* liveSvc = new LiveFlightsService(fetcher, this);
     bridge->setService(liveSvc);
     // log service/bridge errors
