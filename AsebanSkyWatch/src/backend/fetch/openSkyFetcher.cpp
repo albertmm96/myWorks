@@ -11,7 +11,7 @@
 #include <QJsonObject>
 #include <QCoreApplication>
 #include <QDir>
-
+#include <QUrlQuery>
 
 OpenSkyFetcher::OpenSkyFetcher(QObject* parent) : QObject(parent) {
     connect(&manager, &QNetworkAccessManager::finished,
@@ -148,6 +148,38 @@ void OpenSkyFetcher::parseAndInsertFlights(const QString& filePath, QSqlDatabase
 
     db.commit();  //  commit the batch
     emit dataReady(doc);
+}
+
+void OpenSkyFetcher::fetchStatesBBox(double minLat, double minLon, double maxLat, double maxLon, std::function<void(const QJsonObject&)> onOk, std::function<void(const QString&)> onErr)
+{
+    QUrl url("https://opensky-network.org/api/states/all");
+    QUrlQuery q;
+    q.addQueryItem("lamin", QString::number(minLat, 'f', 6));
+    q.addQueryItem("lomin", QString::number(minLon, 'f', 6));
+    q.addQueryItem("lamax", QString::number(maxLat, 'f', 6));
+    q.addQueryItem("lomax", QString::number(maxLon, 'f', 6));
+    url.setQuery(q);
+
+    QNetworkRequest req(url);
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
+
+    QNetworkReply* reply = manager.get(req);
+
+    QObject::connect(reply, &QNetworkReply::finished, reply, [reply, onOk, onErr]() {
+        const auto cleanup = qScopeGuard([&] { reply->deleteLater(); });
+
+        if (reply->error() != QNetworkReply::NoError) {
+            onErr(QString("Network error: %1").arg(reply->errorString()));
+            return;
+        }
+
+        const auto doc = QJsonDocument::fromJson(reply->readAll());
+        if (!doc.isObject()) {
+            onErr("Invalid JSON");
+            return;
+        }
+        onOk(doc.object()); // { time: <int>, states: [...] }
+        });
 }
 
 

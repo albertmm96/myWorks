@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "bridge.h"
+#include "openSkyFetcher.h"
+#include "LiveFlightsService.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -8,6 +10,7 @@
 
 static const char* kMapHtml = R"HTML(<!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <title>Qt + OpenLayers</title>
@@ -51,7 +54,7 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       });
     };
 
-    // Optional: add a vector layer for “live” points (e.g., GPS updates)
+    // we add a vector layer for “live” points (e.g., GPS updates)
     const liveSource = new ol.source.Vector();
     const liveLayer  = new ol.layer.Vector({ source: liveSource });
     map.addLayer(liveLayer);
@@ -63,20 +66,50 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       liveSource.addFeature(feature);
     };
   </script>
+
   <script src="qrc:/qtwebchannel/qwebchannel.js"></script>
   <script>
+    // draw returned flights
+    function renderFlights(states) {
+      liveSource.clear();
+      const feats = [];
+      for (const s of states) {
+        const lon = s[5], lat = s[6];
+        if (lat == null || lon == null) continue;
+        feats.push(new ol.Feature({
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([lon, lat])),
+          icao24: s[0], callsign: s[1] || ""
+        }));
+      }
+      liveSource.addFeatures(feats);
+    }
+  
     new QWebChannel(qt.webChannelTransport, function(channel) {
       window.bridge = channel.objects.bridge;
   
+      // we keep mouse log for the moment
       map.on('pointermove', (evt) => {
-        // epsg:3857 to project on a flat mercator map in meters
         const [lon, lat] = ol.proj.toLonLat(evt.coordinate, 'EPSG:3857');
-        // send the position to C++
         bridge.mouseMoved(lat, lon);
+      });
+  
+      // CLICK -> ask C++ for flights in the tile
+      map.on('singleclick', (evt) => {
+        const [lon, lat] = ol.proj.toLonLat(evt.coordinate, 'EPSG:3857');
+        const z = Math.round(map.getView().getZoom());
+        bridge.requestTileAt(lat, lon, z);
+      });
+  
+      // C++ -> receive and draw
+      bridge.flightsForTile.connect(function(statesJson) {
+        const payload = (typeof statesJson === "string") ? JSON.parse(statesJson) : statesJson;
+        renderFlights(payload.states || payload);
       });
     });
   </script>
-</body>  
+
+</body>
+ 
 </html>)HTML";
 
 MainWindow::MainWindow(QWidget* parent)
@@ -107,6 +140,14 @@ MainWindow::MainWindow(QWidget* parent)
     auto bridge = new Bridge(webView);
     channel->registerObject(QStringLiteral("bridge"), bridge);
     page->setWebChannel(channel);
+
+    // backend wiring
+    auto* fetcher = new OpenSkyFetcher(this);
+    auto* liveSvc = new LiveFlightsService(fetcher, this);
+    bridge->setService(liveSvc);
+    // log service/bridge errors
+    connect(bridge, &Bridge::error, this, [](const QString& m) { qWarning() << "[Bridge]" << m; });
+    connect(liveSvc, &LiveFlightsService::serviceError, this, [](const QString& m) { qWarning() << "[Service]" << m; });
 
     // we load OpenLayers HTML. Base URL helps resolve relative URLs if we add assets.
     webView->setHtml(QString::fromUtf8(kMapHtml), QUrl("https://local.qt/"));
