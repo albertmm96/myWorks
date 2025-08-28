@@ -19,4 +19,12 @@ public:
 private:
     Ui::MainWindow* ui;
     QWebEngineView* webView;  // the map
+
+private slots:
+    void onFilterFlights();
+    void onFilterWeather();
+    void onAnalyseFlights();
+    void onViewTool();
+    void onExport();
+    void onMarkingTool();
 };

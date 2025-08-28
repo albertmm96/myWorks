@@ -188,9 +188,48 @@ MainWindow::MainWindow(QWidget* parent)
             });
     }
 
+    // connect toolbar
+	ui->toolBar->addAction(ui->actionFilter_Flights);
+    ui->toolBar->addAction(ui->actionFilter_Weather);
+	ui->toolBar->addAction(ui->actionFlight_Analytics);
+	ui->toolBar->addAction(ui->actionView_Tool);
+	ui->toolBar->addAction(ui->actionExport);
+	ui->toolBar->addAction(ui->actionMarking_Tools);
+
+	// connect toolbar actions
+    connect(ui->actionFilter_Flights, &QAction::triggered, this, &MainWindow::onFilterFlights);
+    connect(ui->actionFilter_Weather, &QAction::triggered, this, &MainWindow::onFilterWeather);
+    connect(ui->actionFlight_Analytics, &QAction::triggered, this, &MainWindow::onAnalyseFlights);
+	connect(ui->actionView_Tool, &QAction::triggered, this, &MainWindow::onViewTool);
+	connect(ui->actionExport, &QAction::triggered, this, &MainWindow::onExport);
+	connect(ui->actionMarking_Tools, &QAction::triggered, this, &MainWindow::onMarkingTool);
 }
 
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+void MainWindow::onFilterFlights()
+{
+}
+
+void MainWindow::onFilterWeather()
+{
+}
+
+void MainWindow::onAnalyseFlights()
+{
+}
+
+void MainWindow::onViewTool()
+{
+}
+
+void MainWindow::onExport()
+{
+}
+
+void MainWindow::onMarkingTool()
+{
 }
