@@ -54,10 +54,52 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
         duration: 400
       });
     };
-
-    // we add a vector layer for “live” points (e.g., GPS updates)
+    
+    // airplane SVG pointing UP/NORTH by default
+    const planeIconUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="-16 -16 32 32">
+        <polygon points="0,-7 2.5,7 -2.5,7" 
+             fill="red"
+             stroke="black"
+             stroke-width="0.5"/>
+      </svg>
+    `);
+    
+    // cache styles per ~5° to avoid thousands of icon objects
+    const styleCache = {};
+    function styleForHeading(deg) {
+      const bucket = Math.round(deg / 5) * 5;
+      if (styleCache[bucket]) return styleCache[bucket];
+      const rad = bucket * Math.PI / 180;
+      styleCache[bucket] = new ol.style.Style({
+        image: new ol.style.Icon({
+          src: planeIconUrl,
+          rotation: rad,          // radians
+          rotateWithView: true,
+          anchor: [0.5, 0.5],
+          anchorXUnits: 'fraction',
+          anchorYUnits: 'fraction'
+        })
+      });
+      return styleCache[bucket];
+    }
+    
+    // fallback dot when heading is missing
+    const fallbackDot = new ol.style.Style({
+      image: new ol.style.Circle({
+        radius: 4,
+        fill: new ol.style.Fill({ color: '#1976d2' })
+      })
+    });
+    
     const liveSource = new ol.source.Vector();
-    const liveLayer  = new ol.layer.Vector({ source: liveSource });
+    const liveLayer  = new ol.layer.Vector({
+      source: liveSource,
+      style: function(feature) {
+        const hdg = feature.get('headingDeg');
+        return (typeof hdg === 'number') ? styleForHeading(hdg) : fallbackDot;
+      }
+    });
     map.addLayer(liveLayer);
 
     window.qtAddLivePoint = function(lon, lat) {
@@ -77,9 +119,14 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       for (const s of states) {
         const lon = s[5], lat = s[6];
         if (lat == null || lon == null) continue;
+    
+        const headingDeg = (typeof s[10] === 'number') ? s[10] : null; // true_track in degrees
+    
         feats.push(new ol.Feature({
           geometry: new ol.geom.Point(ol.proj.fromLonLat([lon, lat])),
-          icao24: s[0], callsign: s[1] || ""
+          icao24: s[0],
+          callsign: s[1] || "",
+          headingDeg: headingDeg
         }));
       }
       liveSource.addFeatures(feats);
@@ -188,7 +235,7 @@ MainWindow::MainWindow(QWidget* parent)
             });
     }
 
-    // connect toolbar
+    // connect toolbar with buttons
 	ui->toolBar->addAction(ui->actionFilter_Flights);
     ui->toolBar->addAction(ui->actionFilter_Weather);
 	ui->toolBar->addAction(ui->actionFlight_Analytics);
@@ -196,7 +243,7 @@ MainWindow::MainWindow(QWidget* parent)
 	ui->toolBar->addAction(ui->actionExport);
 	ui->toolBar->addAction(ui->actionMarking_Tools);
 
-	// connect toolbar actions
+	// connect toolbar buttons' actions
     connect(ui->actionFilter_Flights, &QAction::triggered, this, &MainWindow::onFilterFlights);
     connect(ui->actionFilter_Weather, &QAction::triggered, this, &MainWindow::onFilterWeather);
     connect(ui->actionFlight_Analytics, &QAction::triggered, this, &MainWindow::onAnalyseFlights);
