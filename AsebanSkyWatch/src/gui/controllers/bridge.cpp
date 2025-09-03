@@ -17,6 +17,7 @@ void Bridge::setService(LiveFlightsService* s) {
         this, [this](const QJsonObject& obj) {
             const QString json =
                 QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+            lastJson_ = json;              // remember what's displayed
             emit flightsForTile(json);
         });
 

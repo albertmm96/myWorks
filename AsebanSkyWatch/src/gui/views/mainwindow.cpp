@@ -8,6 +8,99 @@
 #include <QVBoxLayout>
 #include <QFile>
 #include <QDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStringList>
+
+namespace {
+
+    // dev test: pretty-print one OpenSky "state vector" (array-of-fields) on one line.
+    QString stateLine(const QJsonArray& a) {
+        static const QStringList names = {
+            "icao24",                          // hex ICAO address
+            "callsign",                        // flight ID
+            "origin_country",                  // country
+            "time_position (s)",               // Unix time
+            "last_contact (s)",                // Unix time
+            "longitude (deg)",
+            "latitude (deg)",
+            "baro_altitude (m)",               // barometric altitude (meters)
+            "on_ground (bool)",
+            "velocity (m/s)",                  // ground speed
+            "true_track (deg)",                // heading
+            "vertical_rate (m/s)",
+            "sensors (list)",
+            "geo_altitude (m)",                // geometric altitude
+            "squawk",
+            "spi (bool)",
+            "position_source (enum)",          // 0=ADS-B, 1=ASTERIX, 2=MLAT
+            "category"                         // aircraft category
+        };
+
+        QStringList kv;
+        const int n = std::min(a.size(), names.size());
+
+        for (int i = 0; i < n; ++i) {
+            const QJsonValue v = a.at(i);
+            QString val;
+
+            if (v.isNull()) {
+                val = "null";
+            }
+            else if (v.isDouble()) {
+                const int prec = (i == 5 || i == 6) ? 6 : 3; // lon/lat finer
+                val = QString::number(v.toDouble(), 'f', prec);
+            }
+            else if (v.isBool()) {
+                val = v.toBool() ? "true" : "false";
+            }
+            else if (v.isString()) {
+                val = v.toString().trimmed();
+            }
+            else if (v.isArray()) {
+                val = QString::fromUtf8(QJsonDocument(v.toArray()).toJson(QJsonDocument::Compact));
+            }
+            else if (v.isObject()) {
+                val = QString::fromUtf8(QJsonDocument(v.toObject()).toJson(QJsonDocument::Compact));
+            }
+            else {
+                val = v.toVariant().toString();
+            }
+
+            kv << (names[i] + "=" + val);
+        }
+
+        // print any extra trailing fields (if OpenSky adds more)
+        for (int i = names.size(); i < a.size(); ++i) {
+            const QJsonValue v = a.at(i);
+            QString val;
+            if (v.isArray()) {
+                val = QString::fromUtf8(QJsonDocument(v.toArray()).toJson(QJsonDocument::Compact));
+            }
+            else if (v.isObject()) {
+                val = QString::fromUtf8(QJsonDocument(v.toObject()).toJson(QJsonDocument::Compact));
+            }
+            else if (v.isNull()) {
+                val = "null";
+            }
+            else if (v.isBool()) {
+                val = v.toBool() ? "true" : "false";
+            }
+            else if (v.isDouble()) {
+                val = QString::number(v.toDouble(), 'f', 3);
+            }
+            else {
+                val = v.toVariant().toString();
+            }
+            kv << QString("extra[%1]=%2").arg(i).arg(val);
+        }
+
+        return kv.join(" | ");
+    }
+
+} // namespace
+
 
 static const char* kMapHtml = R"HTML(<!DOCTYPE html>
 <html>
@@ -221,6 +314,17 @@ MainWindow::MainWindow(QWidget* parent)
     // log service/bridge errors
     connect(bridge, &Bridge::error, this, [](const QString& m) { qWarning() << "[Bridge]" << m; });
     connect(liveSvc, &LiveFlightsService::serviceError, this, [](const QString& m) { qWarning() << "[Service]" << m; });
+
+    connect(bridge, &Bridge::flightsForTile, this, [bridge](const QString& statesJson) {
+        const QJsonDocument doc = QJsonDocument::fromJson(statesJson.toUtf8());
+        if (!doc.isObject()) return;
+        const QJsonArray states = doc.object().value("states").toArray();
+
+        for (const auto& v : states) {
+            if (!v.isArray()) continue;
+            qInfo().noquote() << stateLine(v.toArray());
+        }
+        });
 
     // we load OpenLayers HTML. Base URL helps resolve relative URLs if we add assets.
     webView->setHtml(QString::fromUtf8(kMapHtml), QUrl("https://local.qt/"));
