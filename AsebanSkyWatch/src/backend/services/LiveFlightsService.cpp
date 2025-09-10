@@ -42,6 +42,8 @@ void LiveFlightsService::fetchTile(const TileKey& key) {
         // onOk
         [this, key](const QJsonObject& obj) {
             cache_[key] = CacheEntry{ obj, QDateTime::currentDateTimeUtc() };
+			// also insert into DB
+            fetcher_->insertStatesToDb(obj);
             emit flightsForTileReady(obj);
         },
         // onErr

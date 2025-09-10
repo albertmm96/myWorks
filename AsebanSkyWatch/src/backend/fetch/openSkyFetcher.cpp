@@ -229,6 +229,74 @@ void OpenSkyFetcher::setBasicAuth(const QString& user, const QString& pass)
     basicAuth_ = (user + ":" + pass).toUtf8().toBase64();
 }
 
+void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
+{
+    if (!db.isValid()) db = QSqlDatabase::database(); // default connection
+    if (!db.isOpen()) { qWarning() << "[DB] not open"; return; }
+
+    const QJsonArray states = obj.value("states").toArray();
+    if (states.isEmpty()) { qInfo() << "[DB] states empty; nothing to insert"; return; }
+
+    QSqlQuery q(db);
+    if (!db.transaction()) qWarning() << "[DB] begin tx failed:" << db.lastError().text();
+
+    q.prepare(R"SQL(
+        INSERT INTO states_live (
+            icao24, callsign, origin_country, time_position, last_contact,
+            longitude, latitude, baro_altitude, on_ground, velocity,
+            true_track, vertical_rate, sensors, geo_altitude, squawk,
+            spi, position_source, category
+        ) VALUES (
+            :icao24, :callsign, :origin_country, :time_position, :last_contact,
+            :lon, :lat, :baro_alt, :on_ground, :vel,
+            :track, :v_rate, :sensors, :geo_alt, :squawk,
+            :spi, :pos_src, :category
+        )
+    )SQL");
+
+    for (const QJsonValue& v : states) {
+        if (!v.isArray()) continue;
+        const QJsonArray a = v.toArray();
+
+		// bind values, using null/QVariant() for missing/undefined
+        auto bindMaybe = [&](const char* name, int idx) {
+            const QJsonValue vv = (idx < a.size() ? a.at(idx) : QJsonValue());
+            if (vv.isNull() || vv.isUndefined()) q.bindValue(name, QVariant());
+            else q.bindValue(name, vv.toVariant());
+            };
+
+        bindMaybe(":icao24", 0);
+        // trim callsign
+        q.bindValue(":callsign", a.size() > 1 ? a.at(1).toString().trimmed() : QString());
+        bindMaybe(":origin_country", 2);
+        bindMaybe(":time_position", 3);
+        bindMaybe(":last_contact", 4);
+        bindMaybe(":lon", 5);
+        bindMaybe(":lat", 6);
+        bindMaybe(":baro_alt", 7);
+        bindMaybe(":on_ground", 8);
+        bindMaybe(":vel", 9);
+        bindMaybe(":track", 10);
+        bindMaybe(":v_rate", 11);
+		// sensors as JSONB
+        q.bindValue(":sensors", (a.size() > 12 && a.at(12).isArray())
+            ? QString::fromUtf8(QJsonDocument(a.at(12).toArray())
+                .toJson(QJsonDocument::Compact))
+            : QVariant());
+        bindMaybe(":geo_alt", 13);
+        bindMaybe(":squawk", 14);
+        bindMaybe(":spi", 15);
+        bindMaybe(":pos_src", 16);
+        bindMaybe(":category", 17);
+
+        if (!q.exec()) {
+            qWarning() << "[DB] insert failed:" << q.lastError().text();
+        }
+    }
+
+    if (!db.commit()) qWarning() << "[DB] commit failed:" << db.lastError().text();
+}
+
 bool OpenSkyFetcher::loadCredentials(QString* err)
 {
     if (!clientId_.isEmpty() && !clientSecret_.isEmpty()) return true;

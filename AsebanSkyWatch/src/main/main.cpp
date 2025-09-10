@@ -96,9 +96,43 @@ int main(int argc, char* argv[]) {
         fetcher->parseAndInsertFlights(jsonPath, db);
     }
     
+	// live states (OpenSky /api/states/all) to be inserted into the DB while the app runs & then deleted
+    runQuery(query,
+        "CREATE TABLE IF NOT EXISTS states_live ("
+        "  icao24 TEXT,"
+        "  callsign TEXT,"
+        "  origin_country TEXT,"
+        "  time_position BIGINT,"
+        "  last_contact  BIGINT,"
+        "  longitude DOUBLE PRECISION,"
+        "  latitude  DOUBLE PRECISION,"
+        "  baro_altitude DOUBLE PRECISION,"
+        "  on_ground BOOLEAN,"
+        "  velocity DOUBLE PRECISION,"          
+        "  true_track DOUBLE PRECISION,"         
+        "  vertical_rate DOUBLE PRECISION,"      
+        "  sensors JSONB,"
+        "  geo_altitude DOUBLE PRECISION,"
+        "  squawk TEXT,"
+        "  spi BOOLEAN,"
+        "  position_source INT,"
+        "  category INT,"
+        "  time TIMESTAMPTZ DEFAULT NOW()"      
+        ");");
+
+    runQuery(query, "SELECT create_hypertable('states_live','time', if_not_exists => TRUE);");
+
     // gui test
     MainWindow w;
     w.show();
 
-    return app.exec();
+    int rc = app.exec();   // <-- don't return yet
+
+	// run cleanup queries
+    QSqlQuery q(db);
+    runQuery(q, "DROP TABLE IF EXISTS states_live CASCADE;");
+    runQuery(q, "DROP TABLE IF EXISTS flights CASCADE;");
+    db.close();
+
+    return rc;
 }
