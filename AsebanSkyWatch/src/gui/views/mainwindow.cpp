@@ -263,7 +263,12 @@ MainWindow::MainWindow(QWidget* parent)
     auto* splitter = new QSplitter(Qt::Horizontal, central);
     splitter->addWidget(ui->tableView);
 
+    auto* leftStack = new QStackedWidget(splitter);
+    leftStack->addWidget(ui->tableView);   // index 0
+    leftStack->addWidget(ui->scrollArea);  // index 1
+
     // right: the web map
+    splitter->addWidget(leftStack);
     splitter->addWidget(webView);
     splitter->setStretchFactor(0, 1);
     splitter->setStretchFactor(1, 2);
@@ -273,6 +278,19 @@ MainWindow::MainWindow(QWidget* parent)
     layout->addWidget(splitter);
     central->setLayout(layout);
     setCentralWidget(central);
+
+    if (!ui->scrollAreaWidgetContents->layout()) {
+        auto* v = new QVBoxLayout(ui->scrollAreaWidgetContents);
+        v->setContentsMargins(8, 8, 8, 8);
+        v->setSpacing(8);
+        v->addWidget(ui->stackedWidget);
+        v->addStretch();
+    }
+
+    ui->scrollArea->setWidgetResizable(true);
+    ui->scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->scrollAreaWidgetContents->setMinimumHeight(1000);
 
 	// we create a web channel to communicate with the map
     auto page = new QWebEnginePage(webView);
@@ -332,13 +350,6 @@ MainWindow::MainWindow(QWidget* parent)
     // we make sure the resolution is not downscaled
     webView->setZoomFactor(1.0);  // 1.0 = 100%
 
-    // just to try: using fetch button to recenter on Paris
-    if (ui->fetchButton) {
-        connect(ui->fetchButton, &QPushButton::clicked, this, [this] {
-            webView->page()->runJavaScript("qtCenterOn(2.3522, 48.8566, 13);");
-            });
-    }
-
     // connect toolbar with buttons
 	ui->toolBar->addAction(ui->actionFilter_Flights);
     ui->toolBar->addAction(ui->actionFilter_Weather);
@@ -348,12 +359,15 @@ MainWindow::MainWindow(QWidget* parent)
 	ui->toolBar->addAction(ui->actionMarking_Tools);
 
 	// connect toolbar buttons' actions
-    connect(ui->actionFilter_Flights, &QAction::triggered, this, &MainWindow::onFilterFlights);
+    connect(ui->actionFilter_Flights, &QAction::triggered, this, [=] {
+        leftStack->setCurrentWidget(ui->scrollArea);
+        ui->stackedWidget->setCurrentWidget(ui->pageFilterFlights);
+        });
     connect(ui->actionFilter_Weather, &QAction::triggered, this, &MainWindow::onFilterWeather);
     connect(ui->actionFlight_Analytics, &QAction::triggered, this, &MainWindow::onAnalyseFlights);
 	connect(ui->actionView_Tool, &QAction::triggered, this, &MainWindow::onViewTool);
 	connect(ui->actionExport, &QAction::triggered, this, &MainWindow::onExport);
-	connect(ui->actionMarking_Tools, &QAction::triggered, this, &MainWindow::onMarkingTool);
+    connect(ui->actionMarking_Tools, &QAction::triggered, this, &MainWindow::onMarkingTool);
 }
 
 MainWindow::~MainWindow()
