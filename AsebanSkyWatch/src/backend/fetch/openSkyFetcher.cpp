@@ -249,16 +249,33 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
         ) VALUES (
             :icao24, :callsign, :origin_country, :time_position, :last_contact,
             :lon, :lat, :baro_alt, :on_ground, :vel,
-            :track, :v_rate, :sensors, :geo_alt, :squawk,
+            :track, :v_rate, :sensors::jsonb, :geo_alt, :squawk,
             :spi, :pos_src, :category
         )
+        ON CONFLICT (icao24) DO UPDATE SET
+            callsign        = EXCLUDED.callsign,
+            origin_country  = EXCLUDED.origin_country,
+            time_position   = EXCLUDED.time_position,
+            last_contact    = EXCLUDED.last_contact,
+            longitude       = EXCLUDED.longitude,
+            latitude        = EXCLUDED.latitude,
+            baro_altitude   = EXCLUDED.baro_altitude,
+            on_ground       = EXCLUDED.on_ground,
+            velocity        = EXCLUDED.velocity,
+            true_track      = EXCLUDED.true_track,
+            vertical_rate   = EXCLUDED.vertical_rate,
+            sensors         = EXCLUDED.sensors,
+            geo_altitude    = EXCLUDED.geo_altitude,
+            squawk          = EXCLUDED.squawk,
+            spi             = EXCLUDED.spi,
+            position_source = EXCLUDED.position_source,
+            category        = EXCLUDED.category
     )SQL");
 
     for (const QJsonValue& v : states) {
         if (!v.isArray()) continue;
         const QJsonArray a = v.toArray();
 
-		// bind values, using null/QVariant() for missing/undefined
         auto bindMaybe = [&](const char* name, int idx) {
             const QJsonValue vv = (idx < a.size() ? a.at(idx) : QJsonValue());
             if (vv.isNull() || vv.isUndefined()) q.bindValue(name, QVariant());
@@ -266,7 +283,7 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
             };
 
         bindMaybe(":icao24", 0);
-        // trim callsign
+        // callsign trim (can be empty)
         q.bindValue(":callsign", a.size() > 1 ? a.at(1).toString().trimmed() : QString());
         bindMaybe(":origin_country", 2);
         bindMaybe(":time_position", 3);
@@ -278,11 +295,16 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
         bindMaybe(":vel", 9);
         bindMaybe(":track", 10);
         bindMaybe(":v_rate", 11);
-		// sensors as JSONB
-        q.bindValue(":sensors", (a.size() > 12 && a.at(12).isArray())
-            ? QString::fromUtf8(QJsonDocument(a.at(12).toArray())
-                .toJson(QJsonDocument::Compact))
-            : QVariant());
+
+        // sensors -> JSON compact (string), casted in ::jsonb on SQL side
+        if (a.size() > 12 && a.at(12).isArray()) {
+            const auto json = QJsonDocument(a.at(12).toArray()).toJson(QJsonDocument::Compact);
+            q.bindValue(":sensors", QString::fromUtf8(json));
+        }
+        else {
+            q.bindValue(":sensors", QVariant());
+        }
+
         bindMaybe(":geo_alt", 13);
         bindMaybe(":squawk", 14);
         bindMaybe(":spi", 15);
@@ -290,7 +312,7 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
         bindMaybe(":category", 17);
 
         if (!q.exec()) {
-            qWarning() << "[DB] insert failed:" << q.lastError().text();
+            qWarning() << "[DB] upsert failed:" << q.lastError().text();
         }
     }
 
