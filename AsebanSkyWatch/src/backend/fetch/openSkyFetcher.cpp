@@ -18,13 +18,13 @@
 
 
 OpenSkyFetcher::OpenSkyFetcher(QObject* parent) : QObject(parent) {
-    // don’t connect finished globally anymore
+    // we don’t connect finished globally anymore
     QDir dir(QCoreApplication::applicationDirPath());
-    // Go up 3 levels
+    // going up 3 levels in the directory
     dir.cdUp();
     dir.cdUp();
     dir.cdUp();
-	// Now go into /config/credentials.json
+	// we go into /config/credentials.json
     dir.cd("config");
     credentialsPath_ = dir.absolutePath() + "/credentials.json";
 }
@@ -33,11 +33,11 @@ bool OpenSkyFetcher::runPythonFlightFetcher(const QString& icao24, qint64 begin,
 {
     QString basePath = QCoreApplication::applicationDirPath();
     QDir dir(basePath);
-    // Go up 3 levels
+    // going up 3 levels in the directory
     dir.cdUp();
     dir.cdUp();
     dir.cdUp();
-    // Now go into /src/backend/fetch
+    // now we go into /src/backend/fetch
     dir.cd("src/backend/fetch");
 
     QString scriptPath = "opensky_oauth_client.py";
@@ -110,12 +110,12 @@ void OpenSkyFetcher::parseAndInsertFlights(const QString& filePath, QSqlDatabase
 
     QJsonArray flights = doc.array();
 
-    db.transaction();  //  wrap insertions in a transaction for performance and consistency
+    db.transaction();  //  we wrap insertions in a transaction for performance and consistency
 
     for (const QJsonValue& val : flights) {
         QJsonObject f = val.toObject();
 
-        //  CREATE A FRESH QUERY OBJECT INSIDE LOOP!
+        //  WE CREATE A FRESH QUERY OBJECT INSIDE LOOP!
         QSqlQuery query(db);
 
         query.prepare(R"(
@@ -181,7 +181,6 @@ void OpenSkyFetcher::fetchStatesBBox(double minLat, double minLon, double maxLat
 
             QNetworkReply* reply = manager.get(req);
 
-            // IMPORTANT: close the lambda and the connect with "});"
             QObject::connect(reply, &QNetworkReply::finished, reply, [reply, onOk, onErr]() {
                 const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
                 const QByteArray ctype = reply->header(QNetworkRequest::ContentTypeHeader).toByteArray();
@@ -209,7 +208,7 @@ void OpenSkyFetcher::fetchStatesBBox(double minLat, double minLon, double maxLat
                 const QJsonValue statesVal = obj.value("states");
 
                 if (!statesVal.isArray()) {
-                    // Force empty array instead of failing → JS won't crash on null
+                    // we force empty array instead of failing: JS won't crash on null
                     QJsonObject safe = obj;
                     safe.insert("states", QJsonArray());
                     onOk(safe);
@@ -217,7 +216,7 @@ void OpenSkyFetcher::fetchStatesBBox(double minLat, double minLon, double maxLat
                 }
 
                 onOk(obj);
-                }); // <-- this was missing
+                });
         },
         // onErr
         onErr

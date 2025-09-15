@@ -12,13 +12,13 @@ void Bridge::setService(LiveFlightsService* s) {
     service_ = s;
     if (!service_) return;
 
-    // wire once: service → bridge → JS
-    connect(service_, &LiveFlightsService::flightsForTileReady,
+    // we forward merged snapshots to JS
+    connect(service_, &LiveFlightsService::flightsMergedReady,   // changed signal
         this, [this](const QJsonObject& obj) {
             const QString json =
                 QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
-            lastJson_ = json;              // remember what's displayed
-            emit flightsForTile(json);
+            lastJson_ = json;
+            emit flightsForTile(json);                       // JS still listens to flightsForTile(...)
         });
 
     connect(service_, &LiveFlightsService::serviceError,

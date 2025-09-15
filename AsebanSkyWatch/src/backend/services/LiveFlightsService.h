@@ -3,6 +3,10 @@
 #include <QHash>
 #include <QDateTime>
 #include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
+#include <QSet>
+#include <QTimer>
 
 class OpenSkyFetcher; // forward
 
@@ -38,6 +42,7 @@ signals:
     // service → bridge : payload { time: <int>, states: [...] }
     void flightsForTileReady(const QJsonObject& obj);
     void serviceError(const QString& msg);
+	void flightsMergedReady(const QJsonObject& obj);   // new union-of-tiles payload: clicked tiles get merged continuously
 
 private:
     struct CacheEntry { QJsonObject payload; QDateTime ts; };
@@ -47,4 +52,12 @@ private:
     OpenSkyFetcher* fetcher_ = nullptr;  // non-owning
     QHash<TileKey, CacheEntry> cache_;
     int ttlSeconds_ = 15;                // default
+    QSet<TileKey> activeTiles_;                         // tiles user has clicked
+    QTimer refreshTimer_;                               // periodic refresh for all active tiles
+    QHash<QString, QJsonArray> byIcao_;                 // latest state vector per icao24
+    int staleSeconds_ = 180;                            // drop planes after 3 minutes of silence
+
+    void foldStatesIntoMerged(const QJsonObject& obj);  // helper
+    void emitMerged();                                  // helper
+    void pruneStale();                                  // helper
 };

@@ -303,7 +303,7 @@ MainWindow::MainWindow(QWidget* parent)
     // backend wiring
     auto* fetcher = new OpenSkyFetcher(this);
 
-    // Log where the exe is
+    // log where the exe is
     qInfo() << "appDir =" << QCoreApplication::applicationDirPath();
 
     QStringList candidates = {
@@ -324,7 +324,7 @@ MainWindow::MainWindow(QWidget* parent)
     }
     else {
         qInfo() << "Using credentials at:" << chosen;
-        fetcher->setCredentialsPath(chosen);   // <-- set *after* we found it
+        fetcher->setCredentialsPath(chosen);   // <-- set after we found it
     }
 
     auto* liveSvc = new LiveFlightsService(fetcher, this);
