@@ -1,5 +1,4 @@
-﻿// AsebanSkyWatch.cpp : définit le point d'entrée de l'application.
-//
+﻿// Description: Main application entry point for the flight tracking application.
 
 #include "main.h"
 #include "openSkyFetcher.h"
@@ -120,8 +119,8 @@ int main(int argc, char* argv[]) {
         "  time TIMESTAMPTZ DEFAULT NOW()"          
         ");"
     );
-
-    // (optionnel) index utile pour trier/filtrer par fraîcheur
+    
+	// create index on last_contact for faster lookups of most recent states
     runQuery(query,
         "CREATE INDEX IF NOT EXISTS states_live_last_contact_idx "
         "ON states_live (last_contact DESC);"
@@ -133,7 +132,7 @@ int main(int argc, char* argv[]) {
 
     int rc = app.exec();   // <-- don't return yet
 
-    // run cleanup queries (garde-les si tu veux tout nettoyer à la fermeture)
+    // run cleanup queries 
     QSqlQuery q(db);
     runQuery(q, "DROP TABLE IF EXISTS states_live CASCADE;");
     runQuery(q, "DROP TABLE IF EXISTS flights CASCADE;");

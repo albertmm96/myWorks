@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "bridge.h"
 #include "openSkyFetcher.h"
@@ -12,6 +12,10 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStringList>
+#include <QApplication>
+#include <QtMath>      // for qRound
+#include <QToolTip>
+#include <QCursor>
 
 namespace {
 
@@ -158,7 +162,7 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       </svg>
     `);
     
-    // cache styles per ~5� to avoid thousands of icon objects
+    // cache styles per ~5° to avoid thousands of icon objects
     const styleCache = {};
     function styleForHeading(deg) {
       const bucket = Math.round(deg / 5) * 5;
@@ -259,6 +263,7 @@ MainWindow::MainWindow(QWidget* parent)
     , webView(new QWebEngineView(this))
 {
     ui->setupUi(this);
+
     auto* central = new QWidget(this);
     auto* splitter = new QSplitter(Qt::Horizontal, central);
     splitter->addWidget(ui->tableView);
@@ -278,6 +283,32 @@ MainWindow::MainWindow(QWidget* parent)
     layout->addWidget(splitter);
     central->setLayout(layout);
     setCentralWidget(central);
+
+    sliderBubbleLabel = new QLabel(centralWidget());
+    sliderBubbleLabel->setObjectName("sliderBubbleLabel");
+    sliderBubbleLabel->setStyleSheet(
+        "background-color: rgba(0, 0, 0, 180);"
+        "color: white;"
+        "padding: 2px 6px;"
+        "border-radius: 4px;"
+        "font-size: 10px;"
+    );
+    sliderBubbleLabel->setAlignment(Qt::AlignCenter);
+    sliderBubbleLabel->hide();
+
+    sliderBubbleTimer = new QTimer(this);
+    sliderBubbleTimer->setSingleShot(true);
+    connect(sliderBubbleTimer, &QTimer::timeout,
+        sliderBubbleLabel, &QWidget::hide);
+
+    // tracking + connections can stay where they are (after this)
+    ui->latitudeSlider->setTracking(true);
+    ui->longitudeSlider->setTracking(true);
+
+    connect(ui->latitudeSlider, &QSlider::valueChanged,
+        this, &MainWindow::onLatitudeSliderValueChanged);
+    connect(ui->longitudeSlider, &QSlider::valueChanged,
+        this, &MainWindow::onLongitudeSliderValueChanged);
 
     if (!ui->scrollAreaWidgetContents->layout()) {
         auto* v = new QVBoxLayout(ui->scrollAreaWidgetContents);
@@ -362,6 +393,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(ui->actionFilter_Flights, &QAction::triggered, this, [=] {
         leftStack->setCurrentWidget(ui->scrollArea);
         ui->stackedWidget->setCurrentWidget(ui->pageFilterFlights);
+        updateSliderRangesFromDb();
         });
     connect(ui->actionFilter_Weather, &QAction::triggered, this, &MainWindow::onFilterWeather);
     connect(ui->actionFlight_Analytics, &QAction::triggered, this, &MainWindow::onAnalyseFlights);
@@ -373,6 +405,87 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+void MainWindow::updateSliderRangesFromDb()
+{
+    // use default connection opened in main.cpp
+    QSqlDatabase db = QSqlDatabase::database();
+    if (!db.isOpen()) {
+        qWarning() << "[SliderRange] DB not open";
+        return;
+    }
+
+    QSqlQuery q(db);
+    // only consider rows with valid coordinates
+    if (!q.exec(
+        "SELECT MIN(latitude), MAX(latitude), "
+        "       MIN(longitude), MAX(longitude) "
+        "FROM states_live "
+        "WHERE latitude IS NOT NULL AND longitude IS NOT NULL"))
+    {
+        qWarning() << "[SliderRange] query failed:" << q.lastError().text();
+        return;
+    }
+
+    if (!q.next()) {
+        qWarning() << "[SliderRange] query returned no row";
+        return;
+    }
+
+    QVariant minLatVar = q.value(0);
+    QVariant maxLatVar = q.value(1);
+    QVariant minLonVar = q.value(2);
+    QVariant maxLonVar = q.value(3);
+
+    if (minLatVar.isNull() || maxLatVar.isNull() ||
+        minLonVar.isNull() || maxLonVar.isNull()) {
+        qInfo() << "[SliderRange] no coordinates yet in states_live";
+        return;
+    }
+
+    double minLat = minLatVar.toDouble();
+    double maxLat = maxLatVar.toDouble();
+    double minLon = minLonVar.toDouble();
+    double maxLon = maxLonVar.toDouble();
+
+    qDebug() << "[SliderRange] lat:" << minLat << "->" << maxLat
+        << "lon:" << minLon << "->" << maxLon;
+
+    // We store degrees * 100 in the sliders → 0.01 degree resolution
+    auto toSlider = [](double deg) {
+        return static_cast<int>(qRound(deg * 100.0));
+        };
+
+    ui->latitudeSlider->setMinimum(toSlider(minLat));
+    ui->latitudeSlider->setMaximum(toSlider(maxLat));
+    ui->longitudeSlider->setMinimum(toSlider(minLon));
+    ui->longitudeSlider->setMaximum(toSlider(maxLon));
+
+    // optional: set initial position to mid-range
+    ui->latitudeSlider->setValue(toSlider((minLat + maxLat) / 2.0));
+    ui->longitudeSlider->setValue(toSlider((minLon + maxLon) / 2.0));
+}
+
+void MainWindow::showSliderBubble(QSlider* slider, double degrees)
+{
+    sliderBubbleLabel->setText(QString::number(degrees, 'f', 2) + "°");
+    sliderBubbleLabel->adjustSize();
+
+    QRect sliderRect = slider->geometry();
+    QWidget* parentW = slider->parentWidget();
+
+    QWidget* root = centralWidget();  // same parent as the label
+
+    QPoint topRight = parentW->mapTo(root, sliderRect.topRight());
+
+    int x = topRight.x() + 6;
+    int y = topRight.y() + (sliderRect.height() - sliderBubbleLabel->height()) / 2;
+
+    sliderBubbleLabel->move(x, y);
+    sliderBubbleLabel->raise();       // make sure it's on top
+    sliderBubbleLabel->show();
+    sliderBubbleTimer->start(800);
 }
 
 void MainWindow::onFilterFlights()
@@ -397,4 +510,20 @@ void MainWindow::onExport()
 
 void MainWindow::onMarkingTool()
 {
+}
+
+void MainWindow::onLatitudeSliderValueChanged(int value)
+{
+    if (QApplication::mouseButtons() & Qt::LeftButton) {
+        double degrees = value / 100.0;              // back to real latitude
+        showSliderBubble(ui->latitudeSlider, degrees);
+    }
+}
+
+void MainWindow::onLongitudeSliderValueChanged(int value)
+{
+    if (QApplication::mouseButtons() & Qt::LeftButton) {
+        double degrees = value / 100.0;              // back to real longitude
+        showSliderBubble(ui->longitudeSlider, degrees);
+    }
 }
