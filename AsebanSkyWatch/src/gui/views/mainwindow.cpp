@@ -327,7 +327,7 @@ MainWindow::MainWindow(QWidget* parent)
     auto page = new QWebEnginePage(webView);
     webView->setPage(page);
     auto channel = new QWebChannel(webView);
-    auto bridge = new Bridge(webView);
+    bridge = new Bridge(webView);
     channel->registerObject(QStringLiteral("bridge"), bridge);
     page->setWebChannel(channel);
 
@@ -364,7 +364,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(bridge, &Bridge::error, this, [](const QString& m) { qWarning() << "[Bridge]" << m; });
     connect(liveSvc, &LiveFlightsService::serviceError, this, [](const QString& m) { qWarning() << "[Service]" << m; });
 
-    connect(bridge, &Bridge::flightsForTile, this, [bridge](const QString& statesJson) {
+    connect(bridge, &Bridge::flightsForTile, this, [](const QString& statesJson) {
         const QJsonDocument doc = QJsonDocument::fromJson(statesJson.toUtf8());
         if (!doc.isObject()) return;
         const QJsonArray states = doc.object().value("states").toArray();
@@ -462,9 +462,15 @@ void MainWindow::updateSliderRangesFromDb()
     ui->longitudeSlider->setMinimum(toSlider(minLon));
     ui->longitudeSlider->setMaximum(toSlider(maxLon));
 
-    // optional: set initial position to mid-range
     ui->latitudeSlider->setValue(toSlider((minLat + maxLat) / 2.0));
     ui->longitudeSlider->setValue(toSlider((minLon + maxLon) / 2.0));
+
+    dbMinLat_ = minLat;
+    dbMaxLat_ = maxLat;
+    dbMinLon_ = minLon;
+    dbMaxLon_ = maxLon;
+
+    applyGeoFilter();
 }
 
 void MainWindow::showSliderBubble(QSlider* slider, double degrees)
@@ -514,16 +520,46 @@ void MainWindow::onMarkingTool()
 
 void MainWindow::onLatitudeSliderValueChanged(int value)
 {
-    if (QApplication::mouseButtons() & Qt::LeftButton) {
-        double degrees = value / 100.0;              // back to real latitude
+    double degrees = value / 100.0;
+
+    if (QApplication::mouseButtons() & Qt::LeftButton)
         showSliderBubble(ui->latitudeSlider, degrees);
-    }
+
+    applyGeoFilter();
 }
 
 void MainWindow::onLongitudeSliderValueChanged(int value)
 {
-    if (QApplication::mouseButtons() & Qt::LeftButton) {
-        double degrees = value / 100.0;              // back to real longitude
+    double degrees = value / 100.0;
+
+    if (QApplication::mouseButtons() & Qt::LeftButton)
         showSliderBubble(ui->longitudeSlider, degrees);
-    }
+
+    applyGeoFilter();
+}
+
+void MainWindow::applyGeoFilter()
+{
+    if (!bridge) return;
+
+    // slider values are stored as degrees * 100
+    int latMinInt = std::min(ui->latitudeSlider->minimum(),
+        ui->latitudeSlider->value());
+    int latMaxInt = std::max(ui->latitudeSlider->minimum(),
+        ui->latitudeSlider->value());
+
+    int lonMinInt = std::min(ui->longitudeSlider->minimum(),
+        ui->longitudeSlider->value());
+    int lonMaxInt = std::max(ui->longitudeSlider->minimum(),
+        ui->longitudeSlider->value());
+
+    double minLat = latMinInt / 100.0;
+    double maxLat = latMaxInt / 100.0;
+    double minLon = lonMinInt / 100.0;
+    double maxLon = lonMaxInt / 100.0;
+
+    qDebug() << "[Filter] lat:" << minLat << "->" << maxLat
+        << "lon:" << minLon << "->" << maxLon;
+
+    bridge->setGeoFilter(minLat, maxLat, minLon, maxLon);
 }

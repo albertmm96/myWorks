@@ -10,10 +10,11 @@
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
 
-
 namespace Ui {
     class MainWindow;
 }
+
+class Bridge;   // <--- MUST be here
 
 class MainWindow : public QMainWindow
 {
@@ -25,15 +26,22 @@ public:
 
 private:
     Ui::MainWindow* ui;
-    QWebEngineView* webView;  // the map
+    QWebEngineView* webView;
+
+    Bridge* bridge = nullptr;
 
     void updateSliderRangesFromDb();
 
-    // --- slider bubble state ---
     QLabel* sliderBubbleLabel = nullptr;
     QTimer* sliderBubbleTimer = nullptr;
 
     void showSliderBubble(QSlider* slider, double degrees);
+    void applyGeoFilter();
+
+    double dbMinLat_ = -90.0;
+    double dbMaxLat_ = +90.0;
+    double dbMinLon_ = -180.0;
+    double dbMaxLon_ = +180.0;
 
 private slots:
     void onFilterFlights();
@@ -43,7 +51,6 @@ private slots:
     void onExport();
     void onMarkingTool();
 
-    // sliders
     void onLatitudeSliderValueChanged(int value);
     void onLongitudeSliderValueChanged(int value);
 };
