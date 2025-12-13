@@ -176,7 +176,7 @@ void OpenSkyFetcher::fetchStatesBBox(double minLat, double minLon, double maxLat
 
             QNetworkRequest req(url);
             req.setHeader(QNetworkRequest::UserAgentHeader, "AsebanSkyWatch/1.0");
-            req.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
+            req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
             req.setRawHeader("Authorization", "Bearer " + accessToken_.toUtf8());
 
             QNetworkReply* reply = manager.get(req);

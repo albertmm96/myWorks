@@ -10,7 +10,7 @@
 
 class OpenSkyFetcher; // forward
 
-// ---- key for tiles cache (x,y,z) ----
+//  - key for tiles cache (x,y,z)  -
 struct TileKey {
     int x;
     int y;
@@ -20,7 +20,7 @@ struct TileKey {
     }
 };
 
-// ---- non-member qHash for QHash<TileKey, ...> ----
+//  - non-member qHash for QHash<TileKey, ...>  -
 inline uint qHash(const TileKey& key, uint seed = 0) noexcept {
     // we combine x,y,z in a 64-bit then delegate it to qHash(quint64)
     const quint64 h = (quint64(key.z) << 40) ^ (quint64(key.x) << 20) ^ quint64(key.y);

@@ -119,6 +119,19 @@ int main(int argc, char* argv[]) {
         "  time TIMESTAMPTZ DEFAULT NOW()"          
         ");"
     );
+
+    //   live weather (OpenWeather) stored while the app runs
+    runQuery(query,
+        "CREATE TABLE IF NOT EXISTS weather_live ("
+        "  id BIGSERIAL PRIMARY KEY,"
+        "  lat DOUBLE PRECISION NOT NULL,"
+        "  lon DOUBLE PRECISION NOT NULL,"
+        "  fetched_at BIGINT NOT NULL,"                 // unix seconds
+        "  payload JSONB NOT NULL,"                     // full OpenWeather JSON
+        "  time TIMESTAMPTZ DEFAULT NOW(),"
+        "  UNIQUE(lat, lon)"
+        ");"
+    );
     
 	// create index on last_contact for faster lookups of most recent states
     runQuery(query,
@@ -126,15 +139,22 @@ int main(int argc, char* argv[]) {
         "ON states_live (last_contact DESC);"
     );
 
-    // --- GUI test ---
+    // index for quick latest lookups
+    runQuery(query,
+        "CREATE INDEX IF NOT EXISTS weather_live_fetched_at_idx "
+        "ON weather_live (fetched_at DESC);"
+    );
+
+    //   GUI test  
     MainWindow w;
     w.show();
 
-    int rc = app.exec();   // <-- don't return yet
+    int rc = app.exec();   //   don't return yet
 
     // run cleanup queries 
     QSqlQuery q(db);
     runQuery(q, "DROP TABLE IF EXISTS states_live CASCADE;");
     runQuery(q, "DROP TABLE IF EXISTS flights CASCADE;");
+    runQuery(q, "DROP TABLE IF EXISTS weather_live CASCADE;");
     db.close();
 }

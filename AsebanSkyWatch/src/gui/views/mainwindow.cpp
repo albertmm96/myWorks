@@ -3,6 +3,8 @@
 #include "bridge.h"
 #include "openSkyFetcher.h"
 #include "LiveFlightsService.h"
+#include "openWeatherFetcher.h"
+#include "LiveWeatherService.h"
 
 #include <QSplitter>
 #include <QVBoxLayout>
@@ -250,6 +252,13 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
         const payload = (typeof statesJson === "string") ? JSON.parse(statesJson) : statesJson;
         renderFlights(payload.states || payload);
       });
+
+      // C++ -> receive weather for the clicked location
+      bridge.weatherForTile.connect(function(weatherJson) {
+        const payload = (typeof weatherJson === "string") ? JSON.parse(weatherJson) : weatherJson;
+        console.log("[WEATHER]", payload);
+      });
+
     });
   </script>
 
@@ -355,11 +364,20 @@ MainWindow::MainWindow(QWidget* parent)
     }
     else {
         qInfo() << "Using credentials at:" << chosen;
-        fetcher->setCredentialsPath(chosen);   // <-- set after we found it
+        fetcher->setCredentialsPath(chosen);   //   set after we found it
     }
 
     auto* liveSvc = new LiveFlightsService(fetcher, this);
     bridge->setService(liveSvc);
+
+    auto* weatherFetcher = new OpenWeatherFetcher(this);
+    // API key from env var
+    weatherFetcher->setApiKey(
+        QStringLiteral("df0584ec5ee163e72f6129312772ccdb") // dev only, later change to credentials folder
+    );
+    auto* weatherSvc = new LiveWeatherService(weatherFetcher, this);
+    bridge->setWeatherService(weatherSvc);
+
     // log service/bridge errors
     connect(bridge, &Bridge::error, this, [](const QString& m) { qWarning() << "[Bridge]" << m; });
     connect(liveSvc, &LiveFlightsService::serviceError, this, [](const QString& m) { qWarning() << "[Service]" << m; });
