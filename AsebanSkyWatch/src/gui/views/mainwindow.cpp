@@ -409,68 +409,24 @@ MainWindow::~MainWindow()
 
 void MainWindow::updateSliderRangesFromDb()
 {
-    // use default connection opened in main.cpp
-    QSqlDatabase db = QSqlDatabase::database();
-    if (!db.isOpen()) {
-        qWarning() << "[SliderRange] DB not open";
-        return;
-    }
+    // full-Earth bounds (degrees)
+    dbMinLat_ = -90.0;
+    dbMaxLat_ = +90.0;
+    dbMinLon_ = -180.0;
+    dbMaxLon_ = +180.0;
 
-    QSqlQuery q(db);
-    // only consider rows with valid coordinates
-    if (!q.exec(
-        "SELECT MIN(latitude), MAX(latitude), "
-        "       MIN(longitude), MAX(longitude) "
-        "FROM states_live "
-        "WHERE latitude IS NOT NULL AND longitude IS NOT NULL"))
-    {
-        qWarning() << "[SliderRange] query failed:" << q.lastError().text();
-        return;
-    }
-
-    if (!q.next()) {
-        qWarning() << "[SliderRange] query returned no row";
-        return;
-    }
-
-    QVariant minLatVar = q.value(0);
-    QVariant maxLatVar = q.value(1);
-    QVariant minLonVar = q.value(2);
-    QVariant maxLonVar = q.value(3);
-
-    if (minLatVar.isNull() || maxLatVar.isNull() ||
-        minLonVar.isNull() || maxLonVar.isNull()) {
-        qInfo() << "[SliderRange] no coordinates yet in states_live";
-        return;
-    }
-
-    double minLat = minLatVar.toDouble();
-    double maxLat = maxLatVar.toDouble();
-    double minLon = minLonVar.toDouble();
-    double maxLon = maxLonVar.toDouble();
-
-    qDebug() << "[SliderRange] lat:" << minLat << "->" << maxLat
-        << "lon:" << minLon << "->" << maxLon;
-
-    // We store degrees * 100 in the sliders → 0.01 degree resolution
     auto toSlider = [](double deg) {
-        return static_cast<int>(qRound(deg * 100.0));
+        return static_cast<int>(qRound(deg * 100.0)); // 0.01° resolution
         };
 
-    ui->latitudeSlider->setMinimum(toSlider(minLat));
-    ui->latitudeSlider->setMaximum(toSlider(maxLat));
-    ui->longitudeSlider->setMinimum(toSlider(minLon));
-    ui->longitudeSlider->setMaximum(toSlider(maxLon));
+    ui->latitudeSlider->setMinimum(toSlider(dbMinLat_));
+    ui->latitudeSlider->setMaximum(toSlider(dbMaxLat_));
+    ui->longitudeSlider->setMinimum(toSlider(dbMinLon_));
+    ui->longitudeSlider->setMaximum(toSlider(dbMaxLon_));
 
-    ui->latitudeSlider->setValue(toSlider((minLat + maxLat) / 2.0));
-    ui->longitudeSlider->setValue(toSlider((minLon + maxLon) / 2.0));
-
-    dbMinLat_ = minLat;
-    dbMaxLat_ = maxLat;
-    dbMinLon_ = minLon;
-    dbMaxLon_ = maxLon;
-
-    applyGeoFilter();
+    // optional: default at 0° / 0°
+    ui->latitudeSlider->setValue(toSlider(0.0));
+    ui->longitudeSlider->setValue(toSlider(0.0));
 }
 
 void MainWindow::showSliderBubble(QSlider* slider, double degrees)
