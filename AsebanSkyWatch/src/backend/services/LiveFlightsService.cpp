@@ -4,7 +4,32 @@
 #include <algorithm>
 
 LiveFlightsService::LiveFlightsService(OpenSkyFetcher* fetcher, QObject* parent)
-    : QObject(parent), fetcher_(fetcher) {
+    : QObject(parent), fetcher_(fetcher)
+{
+    refreshTimer_.setInterval(3000);
+
+    connect(&refreshTimer_, &QTimer::timeout, this, [this] {
+        qInfo() << "[Flights] tick activeTiles=" << activeTiles_.size()
+            << "cache=" << cache_.size();
+        const auto now = QDateTime::currentDateTimeUtc();
+
+        for (const TileKey& key : std::as_const(activeTiles_)) {
+            auto it = cache_.find(key);
+            if (it != cache_.end() && it->ts.secsTo(now) < ttlSeconds_) {
+                // we use cached payload instead of refetching
+                foldStatesIntoMerged(it->payload);
+
+                // we also upsert cached snapshot every tick
+                fetcher_->insertStatesToDb(it->payload);
+            }
+            else {
+                fetchTile(key); // network fetch (already upserts in onOk)
+            }
+        }
+
+        pruneStale();
+        emitMerged();
+        });
 }
 
 // called from bridge when the user moves the map
@@ -28,8 +53,11 @@ void LiveFlightsService::requestTile(double lat, double lon, int z) {
     const auto now = QDateTime::currentDateTimeUtc();
     auto it = cache_.find(key);
     if (it != cache_.end() && it->ts.secsTo(now) < ttlSeconds_) {
-        // merge cached result into union and emit merged snapshot
         foldStatesIntoMerged(it->payload);
+
+        // we upsert cached snapshot on click as well
+        fetcher_->insertStatesToDb(it->payload);
+
         emitMerged();
         return;
     }
@@ -37,16 +65,11 @@ void LiveFlightsService::requestTile(double lat, double lon, int z) {
     // otherwise fetch now (onOk will fold & emit)
     fetchTile(key);
 
-    // refresh all active tiles every ~3 seconds
-    refreshTimer_.setInterval(3000);
-    connect(&refreshTimer_, &QTimer::timeout, this, [this] {
-        for (const TileKey& key : std::as_const(activeTiles_)) {
-            fetchTile(key);                      // honors the TTL/cache, so it's cheap
-        }
-        pruneStale();                            // drop silent aircraft
-        emitMerged();                            // push a fresh merged snapshot
-        });
-    refreshTimer_.start();
+    if (!refreshTimer_.isActive())
+        refreshTimer_.start();
+
+    qInfo() << "[Flights] refreshTimer active =" << refreshTimer_.isActive()
+        << "interval(ms)=" << refreshTimer_.interval();
 }
 
 void LiveFlightsService::fetchTile(const TileKey& key) {

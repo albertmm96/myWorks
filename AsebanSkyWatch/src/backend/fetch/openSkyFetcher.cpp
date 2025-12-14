@@ -244,12 +244,12 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
             icao24, callsign, origin_country, time_position, last_contact,
             longitude, latitude, baro_altitude, on_ground, velocity,
             true_track, vertical_rate, sensors, geo_altitude, squawk,
-            spi, position_source, category
+            spi, position_source, category, last_upsert_at
         ) VALUES (
             :icao24, :callsign, :origin_country, :time_position, :last_contact,
             :lon, :lat, :baro_alt, :on_ground, :vel,
             :track, :v_rate, :sensors::jsonb, :geo_alt, :squawk,
-            :spi, :pos_src, :category
+            :spi, :pos_src, :category, :upsert_ts
         )
         ON CONFLICT (icao24) DO UPDATE SET
             callsign        = EXCLUDED.callsign,
@@ -268,7 +268,8 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
             squawk          = EXCLUDED.squawk,
             spi             = EXCLUDED.spi,
             position_source = EXCLUDED.position_source,
-            category        = EXCLUDED.category
+            category        = EXCLUDED.category,
+            last_upsert_at = EXCLUDED.last_upsert_at
     )SQL");
 
     for (const QJsonValue& v : states) {
@@ -309,6 +310,7 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
         bindMaybe(":spi", 15);
         bindMaybe(":pos_src", 16);
         bindMaybe(":category", 17);
+        q.bindValue(":upsert_ts", QDateTime::currentSecsSinceEpoch());
 
         if (!q.exec()) {
             qWarning() << "[DB] upsert failed:" << q.lastError().text();

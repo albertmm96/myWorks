@@ -131,9 +131,7 @@ void Bridge::requestTileAt(double lat, double lon, int z) {
     hasWeatherAnchor_ = true;
     weatherAnchorLat_ = lat;
     weatherAnchorLon_ = lon;
-
     qInfo() << "[Bridge] Weather anchor set to" << weatherAnchorLat_ << weatherAnchorLon_;
-
     requestWeatherAt(lat, lon);
 }
 

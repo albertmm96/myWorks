@@ -44,6 +44,11 @@ int main(int argc, char* argv[]) {
     
     QSqlQuery query;
 
+	// Drop existing tables if any
+    runQuery(query, "DROP TABLE IF EXISTS states_live CASCADE;");
+    runQuery(query, "DROP TABLE IF EXISTS weather_live CASCADE;");
+    runQuery(query, "DROP TABLE IF EXISTS flights CASCADE;");
+
     // Create the flights table
     runQuery(query,
         "CREATE TABLE IF NOT EXISTS flights ("
@@ -98,26 +103,30 @@ int main(int argc, char* argv[]) {
     // live states (OpenSky /api/states/all) stored while the app runs
     runQuery(query,
         "CREATE TABLE IF NOT EXISTS states_live ("
-        "  icao24 TEXT PRIMARY KEY,"                
+        "  icao24 TEXT PRIMARY KEY,"
         "  callsign TEXT,"
         "  origin_country TEXT,"
         "  time_position BIGINT,"
-        "  last_contact  BIGINT,"
+        "  last_contact BIGINT,"
         "  longitude DOUBLE PRECISION,"
-        "  latitude  DOUBLE PRECISION,"
+        "  latitude DOUBLE PRECISION,"
         "  baro_altitude DOUBLE PRECISION,"
         "  on_ground BOOLEAN,"
         "  velocity DOUBLE PRECISION,"
         "  true_track DOUBLE PRECISION,"
         "  vertical_rate DOUBLE PRECISION,"
-        "  sensors JSONB,"
         "  geo_altitude DOUBLE PRECISION,"
         "  squawk TEXT,"
         "  spi BOOLEAN,"
-        "  position_source INT,"
-        "  category INT,"
-        "  time TIMESTAMPTZ DEFAULT NOW()"          
+        "  position_source INTEGER,"
+        "  category INTEGER,"
+        "  last_upsert_at BIGINT"
         ");"
+    );
+	// ensure last_upsert_at exists
+    runQuery(query,
+        "ALTER TABLE states_live "
+        "ADD COLUMN IF NOT EXISTS last_upsert_at BIGINT;"
     );
 
     //   live weather (OpenWeather) stored while the app runs
@@ -150,11 +159,5 @@ int main(int argc, char* argv[]) {
     w.show();
 
     int rc = app.exec();   //   don't return yet
-
-    // run cleanup queries 
-    QSqlQuery q(db);
-    runQuery(q, "DROP TABLE IF EXISTS states_live CASCADE;");
-    runQuery(q, "DROP TABLE IF EXISTS flights CASCADE;");
-    runQuery(q, "DROP TABLE IF EXISTS weather_live CASCADE;");
     db.close();
 }

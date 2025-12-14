@@ -47,14 +47,14 @@ private:
     double minLon_ = -180.0;
     double maxLon_ = +180.0;
 
-	// weather refresh state 
-    QTimer* weatherRefreshTimer_ = nullptr;
     double lastWeatherLat_ = 0.0;
     double lastWeatherLon_ = 0.0;
-    bool hasWeatherAnchor_ = false;    // do we have a “selected point” yet?
+	// weather refresh state 
+    QTimer* weatherRefreshTimer_ = nullptr;
+    bool hasWeatherAnchor_ = false;
     double weatherAnchorLat_ = 0.0;
     double weatherAnchorLon_ = 0.0;
-    int weatherRefreshMs_ = 20 * 1000; // 20 seconds, safe enough for now...
+    int weatherRefreshMs_ = 60 * 1000; // 60s
 
     void emitFilteredJson(const QJsonObject& obj);
 };
