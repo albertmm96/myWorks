@@ -15,7 +15,8 @@
 #include <QDir>
 #include <QUrlQuery>
 #include <QUrl>
-
+#include <QDateTime>
+#include <QSqlDriver>
 
 OpenSkyFetcher::OpenSkyFetcher(QObject* parent) : QObject(parent) {
     // we don’t connect finished globally anymore
@@ -230,26 +231,33 @@ void OpenSkyFetcher::setBasicAuth(const QString& user, const QString& pass)
 
 void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
 {
-    if (!db.isValid()) db = QSqlDatabase::database(); // default connection
-    if (!db.isOpen()) { qWarning() << "[DB] not open"; return; }
+    if (!db.isValid())
+        db = QSqlDatabase::database(); // default connection
+
+    if (!db.isOpen()) {
+        qWarning() << "[DB] not open";
+        return;
+    }
 
     const QJsonArray states = obj.value("states").toArray();
-    if (states.isEmpty()) { qInfo() << "[DB] states empty; nothing to insert"; return; }
+    if (states.isEmpty()) {
+        qInfo() << "[DB] states empty; nothing to insert";
+        return;
+    }
 
-    QSqlQuery q(db);
-    if (!db.transaction()) qWarning() << "[DB] begin tx failed:" << db.lastError().text();
-
-    q.prepare(R"SQL(
+    static const QString kUpsertSql = R"SQL(
         INSERT INTO states_live (
             icao24, callsign, origin_country, time_position, last_contact,
             longitude, latitude, baro_altitude, on_ground, velocity,
             true_track, vertical_rate, sensors, geo_altitude, squawk,
-            spi, position_source, category, last_upsert_at
+            spi, position_source, category,
+            last_upsert_at
         ) VALUES (
             :icao24, :callsign, :origin_country, :time_position, :last_contact,
             :lon, :lat, :baro_alt, :on_ground, :vel,
-            :track, :v_rate, :sensors::jsonb, :geo_alt, :squawk,
-            :spi, :pos_src, :category, :upsert_ts
+            :track, :v_rate, CAST(:sensors AS jsonb), :geo_alt, :squawk,
+            :spi, :pos_src, :category,
+            :last_upsert_at
         )
         ON CONFLICT (icao24) DO UPDATE SET
             callsign        = EXCLUDED.callsign,
@@ -269,12 +277,21 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
             spi             = EXCLUDED.spi,
             position_source = EXCLUDED.position_source,
             category        = EXCLUDED.category,
-            last_upsert_at = EXCLUDED.last_upsert_at
-    )SQL");
+            last_upsert_at  = EXCLUDED.last_upsert_at
+    )SQL";
+
+    if (!db.transaction()) {
+        qWarning() << "[DB] begin tx failed:" << db.lastError().text();
+    }
+
+    bool anyError = false;
 
     for (const QJsonValue& v : states) {
         if (!v.isArray()) continue;
         const QJsonArray a = v.toArray();
+
+        QSqlQuery q(db);              // fresh query each row
+        q.prepare(kUpsertSql);
 
         auto bindMaybe = [&](const char* name, int idx) {
             const QJsonValue vv = (idx < a.size() ? a.at(idx) : QJsonValue());
@@ -283,7 +300,6 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
             };
 
         bindMaybe(":icao24", 0);
-        // callsign trim (can be empty)
         q.bindValue(":callsign", a.size() > 1 ? a.at(1).toString().trimmed() : QString());
         bindMaybe(":origin_country", 2);
         bindMaybe(":time_position", 3);
@@ -296,9 +312,10 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
         bindMaybe(":track", 10);
         bindMaybe(":v_rate", 11);
 
-        // sensors -> JSON compact (string), casted in ::jsonb on SQL side
+        // sensors -> JSON string (or NULL)
         if (a.size() > 12 && a.at(12).isArray()) {
-            const auto json = QJsonDocument(a.at(12).toArray()).toJson(QJsonDocument::Compact);
+            const QByteArray json = QJsonDocument(a.at(12).toArray())
+                .toJson(QJsonDocument::Compact);
             q.bindValue(":sensors", QString::fromUtf8(json));
         }
         else {
@@ -310,14 +327,25 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
         bindMaybe(":spi", 15);
         bindMaybe(":pos_src", 16);
         bindMaybe(":category", 17);
-        q.bindValue(":upsert_ts", QDateTime::currentSecsSinceEpoch());
+
+        q.bindValue(":last_upsert_at", QDateTime::currentSecsSinceEpoch());
 
         if (!q.exec()) {
+            anyError = true;
             qWarning() << "[DB] upsert failed:" << q.lastError().text();
         }
     }
 
-    if (!db.commit()) qWarning() << "[DB] commit failed:" << db.lastError().text();
+    if (db.driver()->hasFeature(QSqlDriver::Transactions)) {
+        if (anyError) {
+            if (!db.rollback())
+                qWarning() << "[DB] rollback failed:" << db.lastError().text();
+        }
+        else {
+            if (!db.commit())
+                qWarning() << "[DB] commit failed:" << db.lastError().text();
+        }
+    }
 }
 
 bool OpenSkyFetcher::loadCredentials(QString* err)

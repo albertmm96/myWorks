@@ -48,7 +48,6 @@ void Bridge::setWeatherService(LiveWeatherService* s)
             QSqlDatabase db = QSqlDatabase::database();
             if (db.isOpen()) {
                 QSqlQuery q(db);
-
                 q.prepare(
                     "INSERT INTO weather_live(lat, lon, fetched_at, payload) "
                     "VALUES (:lat, :lon, :t, CAST(:p AS jsonb)) "
