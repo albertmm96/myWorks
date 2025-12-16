@@ -42,7 +42,7 @@ void LiveWeatherService::onTick(){
     const qint64 fetchedAt = QDateTime::currentSecsSinceEpoch();
     const QByteArray payloadJson = QJsonDocument(cache_).toJson(QJsonDocument::Compact);
 
-    QSqlDatabase db = QSqlDatabase::database();
+    QSqlDatabase db = QSqlDatabase::database("pg_weather");
     if (!db.isOpen()) {
         emit serviceError("weather upsert failed: DB not open");
         return;

@@ -1,55 +1,81 @@
-﻿// Description: Main application entry point for the flight tracking application.
-
-#include "main.h"
+﻿#include "main.h"
 #include "openSkyFetcher.h"
 #include "mainwindow.h"
 
 #include <QApplication>
-#include <QPushButton>
 #include <QProcess>
 #include <QtSql/QSqlDatabase>
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
 #include <QDateTime>
 #include <QDir>
+#include <QCoreApplication>
 
-
-// check if qt sql queries execute properly
-void runQuery(QSqlQuery& query, const QString& sql) {
+// we check if qt sql queries execute properly
+static void runQuery(QSqlQuery& query, const QString& sql) {
     if (!query.exec(sql)) {
         qCritical() << "Query failed:" << query.lastError().text();
+        qCritical() << "SQL was:" << sql;
         exit(1);
     }
 }
 
-int main(int argc, char* argv[]) {
-    QApplication app(argc, argv);
+// we open a named PostgreSQL connection, to avoid later conflicts
+static QSqlDatabase openPgConnection(const QString& connName)
+{
+    // if already exists, reuse it
+    if (QSqlDatabase::contains(connName)) {
+        QSqlDatabase existing = QSqlDatabase::database(connName);
+        if (!existing.isOpen() && !existing.open()) {
+            qCritical() << "[DB] reopen failed for" << connName << ":" << existing.lastError().text();
+            exit(1);
+        }
+        return existing;
+    }
 
-    // test if postgresql works
-    QProcess process;
-    process.start("psql", QStringList{ "-U", "postgres", "-d", "Utilisateur", "-f", "schema.sql" });
-    process.waitForFinished();
+    QSqlDatabase db = QSqlDatabase::addDatabase("QPSQL", connName);
 
-    // TESTING IF TIMESCALEDB EXTENSION WORKS
-    QSqlDatabase db = QSqlDatabase::addDatabase("QPSQL");
+	// configs, will move later to config file
     db.setHostName("localhost");
     db.setDatabaseName("Utilisateur");
     db.setUserName("postgres");
-    db.setPassword("Jujux236");       
-    // check if database connects
-    if (!db.open()) {
-        qCritical() << "Database connection failed:" << db.lastError().text();
-        return 1;
-    }
-    
-    QSqlQuery query;
+    db.setPassword("Jujux236");
+    // ====================================
 
-	// Drop existing tables if any
+    if (!db.open()) {
+        qCritical() << "Database connection failed for" << connName << ":" << db.lastError().text();
+        exit(1);
+    }
+
+    qInfo() << "[DB] opened connection:" << connName;
+    return db;
+}
+
+int main(int argc, char* argv[])
+{
+    QApplication app(argc, argv);
+
+    // test if postgresql works on local
+    {
+        QProcess process;
+        process.start("psql", QStringList{ "-U", "postgres", "-d", "Utilisateur", "-f", "schema.sql" });
+        process.waitForFinished();
+    }
+
+	// we allocate one DB session per schema (flights, weather)
+    QSqlDatabase dbFlights = openPgConnection("pg_flights");
+    QSqlDatabase dbWeather = openPgConnection("pg_weather");
+    Q_UNUSED(dbWeather); // schema init is done once; weather upserts will use pg_weather elsewhere
+
+    // now all schema/bootstrap queries should run on ONE chosen connection
+    QSqlQuery query(dbFlights);
+
+    // we drop existing tables if any
     runQuery(query, "DROP TABLE IF EXISTS states_live CASCADE;");
     runQuery(query, "DROP TABLE IF EXISTS weather_live CASCADE;");
     runQuery(query, "DROP TABLE IF EXISTS flights CASCADE;");
 
-    // Create the flights table
+	// we keep this for now, may become legacy later or just removed
     runQuery(query,
         "CREATE TABLE IF NOT EXISTS flights ("
         "icao24 TEXT, "
@@ -64,16 +90,16 @@ int main(int argc, char* argv[]) {
         "estArrivalAirportVertDistance INTEGER, "
         "departureAirportCandidatesCount INTEGER, "
         "arrivalAirportCandidatesCount INTEGER, "
-        "time TIMESTAMPTZ DEFAULT NOW());");
+        "time TIMESTAMPTZ DEFAULT NOW());"
+    );
 
-    // Turn it into a hypertable
-    // Create a flights hypertable
-    runQuery(query,"SELECT create_hypertable('flights', 'time', if_not_exists => TRUE);");
+    // we turn it into a hypertable
+    runQuery(query, "SELECT create_hypertable('flights', 'time', if_not_exists => TRUE);");
 
-    // Create OpenSky fetcher
+    // we create OpenSky fetcher
     OpenSkyFetcher* fetcher = new OpenSkyFetcher;
 
-    // Optional: connect signals for error and JSON output
+    // connect signals for error and JSON output
     QObject::connect(fetcher, &OpenSkyFetcher::dataReady, [](const QJsonDocument& json) {
         qDebug() << "Received OpenSky data:" << json;
         });
@@ -81,25 +107,26 @@ int main(int argc, char* argv[]) {
         qWarning() << "OpenSky error:" << error;
         });
 
-    // Define a time window for historical data
+    // we define a time window for historical data
     QString icao24 = "e49c0d";
     qint64 now = QDateTime::currentSecsSinceEpoch();
-    qint64 end = now;          
-    qint64 begin = end - 21600;       // 6 hours before that = 6 x 3600 s
-
-    // Call Python script and insert into DB if successful
+    qint64 end = now;
+    qint64 begin = end - 21600; // 6 hours before that = 6 x 3600 s
+    // call Python script and insert into DB if successful
     if (fetcher->runPythonFlightFetcher(icao24, begin, end)) {
         QDir dir(QCoreApplication::applicationDirPath());
-        // Go up 3 levels
+        // going up 3 levels
         dir.cdUp();
         dir.cdUp();
         dir.cdUp();
         // Now go into /src/backend/fetch
         dir.cd("src/backend/fetch");
         QString jsonPath = dir.absolutePath() + "/flights.json";
-        fetcher->parseAndInsertFlights(jsonPath, db);
+
+        // insert using the flights connection (named connection)
+        fetcher->parseAndInsertFlights(jsonPath, dbFlights);
     }
-    
+
     // live states (OpenSky /api/states/all) stored while the app runs
     runQuery(query,
         "CREATE TABLE IF NOT EXISTS states_live ("
@@ -123,26 +150,27 @@ int main(int argc, char* argv[]) {
         "  last_upsert_at BIGINT"
         ");"
     );
-	// ensure last_upsert_at exists
+
+    // ensure last_upsert_at exists
     runQuery(query,
         "ALTER TABLE states_live "
         "ADD COLUMN IF NOT EXISTS last_upsert_at BIGINT;"
     );
 
-    //   live weather (OpenWeather) stored while the app runs
+    // live weather (OpenWeather) stored while the app runs
     runQuery(query,
         "CREATE TABLE IF NOT EXISTS weather_live ("
         "  id BIGSERIAL PRIMARY KEY,"
         "  lat DOUBLE PRECISION NOT NULL,"
         "  lon DOUBLE PRECISION NOT NULL,"
-        "  fetched_at BIGINT NOT NULL,"                 // unix seconds
-        "  payload JSONB NOT NULL,"                     // full OpenWeather JSON
+        "  fetched_at BIGINT NOT NULL,"
+        "  payload JSONB NOT NULL,"
         "  time TIMESTAMPTZ DEFAULT NOW(),"
         "  UNIQUE(lat, lon)"
         ");"
     );
-    
-	// create index on last_contact for faster lookups of most recent states
+
+    // create index on last_contact for faster lookups of most recent states
     runQuery(query,
         "CREATE INDEX IF NOT EXISTS states_live_last_contact_idx "
         "ON states_live (last_contact DESC);"
@@ -154,10 +182,17 @@ int main(int argc, char* argv[]) {
         "ON weather_live (fetched_at DESC);"
     );
 
-    //   GUI test  
+    // GUI
     MainWindow w;
     w.show();
 
-    int rc = app.exec();   //   don't return yet
-    db.close();
+    const int rc = app.exec();
+
+    //closing the named connections explicitly
+    dbFlights.close();
+    dbWeather.close();
+    QSqlDatabase::removeDatabase("pg_flights");
+    QSqlDatabase::removeDatabase("pg_weather");
+
+    return rc;
 }

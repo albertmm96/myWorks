@@ -234,7 +234,7 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj){
     if (!statesVal.isArray())
         return;
 
-    QSqlDatabase db = QSqlDatabase::database();
+    QSqlDatabase db = QSqlDatabase::database("pg_flights");
     if (!db.isOpen()) {
         qWarning() << "[DB] insertStatesToDb: database not open";
         return;
