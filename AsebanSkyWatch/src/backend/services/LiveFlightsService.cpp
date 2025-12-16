@@ -6,30 +6,7 @@
 LiveFlightsService::LiveFlightsService(OpenSkyFetcher* fetcher, QObject* parent)
     : QObject(parent), fetcher_(fetcher)
 {
-    refreshTimer_.setInterval(3000);
 
-    connect(&refreshTimer_, &QTimer::timeout, this, [this] {
-        qInfo() << "[Flights] tick activeTiles=" << activeTiles_.size()
-            << "cache=" << cache_.size();
-        const auto now = QDateTime::currentDateTimeUtc();
-
-        for (const TileKey& key : std::as_const(activeTiles_)) {
-            auto it = cache_.find(key);
-            if (it != cache_.end() && it->ts.secsTo(now) < ttlSeconds_) {
-                // we use cached payload instead of refetching
-                foldStatesIntoMerged(it->payload);
-
-                // we also upsert cached snapshot every tick
-                fetcher_->insertStatesToDb(it->payload);
-            }
-            else {
-                fetchTile(key); // network fetch (already upserts in onOk)
-            }
-        }
-
-        pruneStale();
-        emitMerged();
-        });
 }
 
 // called from bridge when the user moves the map
@@ -54,22 +31,49 @@ void LiveFlightsService::requestTile(double lat, double lon, int z) {
     auto it = cache_.find(key);
     if (it != cache_.end() && it->ts.secsTo(now) < ttlSeconds_) {
         foldStatesIntoMerged(it->payload);
-
-        // we upsert cached snapshot on click as well
-        fetcher_->insertStatesToDb(it->payload);
-
         emitMerged();
         return;
     }
 
     // otherwise fetch now (onOk will fold & emit)
     fetchTile(key);
+}
 
-    if (!refreshTimer_.isActive())
-        refreshTimer_.start();
+void LiveFlightsService::onTick()
+{
+    if (!fetcher_) return;
 
-    qInfo() << "[Flights] refreshTimer active =" << refreshTimer_.isActive()
-        << "interval(ms)=" << refreshTimer_.interval();
+    const auto now = QDateTime::currentDateTimeUtc();
+
+    // we fold valid cached tiles into the merged map (no network required)
+    for (const TileKey& key : std::as_const(activeTiles_)) {
+        auto it = cache_.find(key);
+        if (it != cache_.end() && it->ts.secsTo(now) < ttlSeconds_) {
+            foldStatesIntoMerged(it->payload);
+        }
+    }
+
+    // the housekeeping and emit merged snapshot (also updates lastMerged_)
+    pruneStale();
+    emitMerged();
+
+    // deterministic DB flush ONCE per tick using the existing parsing:
+    // OpenSkyFetcher::insertStatesToDb reads obj["states"] array and maps indices -> columns.
+    if (!lastMerged_.isEmpty()) {
+        fetcher_->insertStatesToDb(lastMerged_);
+    }
+
+    // we refresh stale/missing tiles (network only; no DB writes here)
+    for (const TileKey& key : std::as_const(activeTiles_)) {
+        auto it = cache_.find(key);
+        const bool needFetch =
+            (it == cache_.end()) ||
+            (it->ts.secsTo(now) >= ttlSeconds_);
+
+        if (needFetch) {
+            fetchTile(key);
+        }
+    }
 }
 
 void LiveFlightsService::fetchTile(const TileKey& key) {
@@ -80,11 +84,8 @@ void LiveFlightsService::fetchTile(const TileKey& key) {
         // onOk
         [this, key](const QJsonObject& obj) {
             cache_[key] = CacheEntry{ obj, QDateTime::currentDateTimeUtc() };
-            fetcher_->insertStatesToDb(obj);      // keeps local DB upsert (latest per icao24)
-			foldStatesIntoMerged(obj);            // updates union-of-tiles snapshot
-			emitMerged();                         // pushes a freshly merged snapshot
-            // optionally we can later keep the old per-tile signal if we still want it elsewhere
-            // emit flightsForTileReady(obj);
+            foldStatesIntoMerged(obj);   // updates union-of-tiles snapshot
+            emitMerged();                // pushes a freshly merged snapshot
         },
         // onErr
         [this](const QString& err) { emit serviceError(err); }
@@ -126,6 +127,9 @@ void LiveFlightsService::emitMerged()
     QJsonObject payload;
     payload.insert("time", static_cast<qint64>(QDateTime::currentSecsSinceEpoch()));
     payload.insert("states", merged);
+
+    // we keep last merged snapshot for deterministic DB flush on master tick
+    lastMerged_ = payload;
 
     emit flightsMergedReady(payload);
 }

@@ -229,123 +229,102 @@ void OpenSkyFetcher::setBasicAuth(const QString& user, const QString& pass)
     basicAuth_ = (user + ":" + pass).toUtf8().toBase64();
 }
 
-void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj, QSqlDatabase db)
-{
-    if (!db.isValid())
-        db = QSqlDatabase::database(); // default connection
+void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj){
+    const QJsonValue statesVal = obj.value("states");
+    if (!statesVal.isArray())
+        return;
 
+    QSqlDatabase db = QSqlDatabase::database();
     if (!db.isOpen()) {
-        qWarning() << "[DB] not open";
+        qWarning() << "[DB] insertStatesToDb: database not open";
         return;
     }
 
-    const QJsonArray states = obj.value("states").toArray();
-    if (states.isEmpty()) {
-        qInfo() << "[DB] states empty; nothing to insert";
+    const QJsonArray states = statesVal.toArray();
+    if (states.isEmpty())
+        return;
+
+    if (!db.transaction()) {
+        qWarning() << "[DB] transaction start failed:" << db.lastError().text();
         return;
     }
 
-    static const QString kUpsertSql = R"SQL(
+    QSqlQuery q(db);
+
+    q.prepare(R"SQL(
         INSERT INTO states_live (
             icao24, callsign, origin_country, time_position, last_contact,
             longitude, latitude, baro_altitude, on_ground, velocity,
-            true_track, vertical_rate, sensors, geo_altitude, squawk,
-            spi, position_source, category,
-            last_upsert_at
-        ) VALUES (
+            true_track, vertical_rate, geo_altitude, squawk, spi,
+            position_source, category, last_upsert_at
+        )
+        VALUES (
             :icao24, :callsign, :origin_country, :time_position, :last_contact,
-            :lon, :lat, :baro_alt, :on_ground, :vel,
-            :track, :v_rate, CAST(:sensors AS jsonb), :geo_alt, :squawk,
-            :spi, :pos_src, :category,
-            :last_upsert_at
+            :longitude, :latitude, :baro_altitude, :on_ground, :velocity,
+            :true_track, :vertical_rate, :geo_altitude, :squawk, :spi,
+            :position_source, :category, NOW()
         )
         ON CONFLICT (icao24) DO UPDATE SET
-            callsign        = EXCLUDED.callsign,
-            origin_country  = EXCLUDED.origin_country,
-            time_position   = EXCLUDED.time_position,
-            last_contact    = EXCLUDED.last_contact,
-            longitude       = EXCLUDED.longitude,
-            latitude        = EXCLUDED.latitude,
-            baro_altitude   = EXCLUDED.baro_altitude,
-            on_ground       = EXCLUDED.on_ground,
-            velocity        = EXCLUDED.velocity,
-            true_track      = EXCLUDED.true_track,
-            vertical_rate   = EXCLUDED.vertical_rate,
-            sensors         = EXCLUDED.sensors,
-            geo_altitude    = EXCLUDED.geo_altitude,
-            squawk          = EXCLUDED.squawk,
-            spi             = EXCLUDED.spi,
-            position_source = EXCLUDED.position_source,
-            category        = EXCLUDED.category,
-            last_upsert_at  = EXCLUDED.last_upsert_at
-    )SQL";
+            callsign         = EXCLUDED.callsign,
+            origin_country   = EXCLUDED.origin_country,
+            time_position    = EXCLUDED.time_position,
+            last_contact     = EXCLUDED.last_contact,
+            longitude        = EXCLUDED.longitude,
+            latitude         = EXCLUDED.latitude,
+            baro_altitude    = EXCLUDED.baro_altitude,
+            on_ground        = EXCLUDED.on_ground,
+            velocity         = EXCLUDED.velocity,
+            true_track       = EXCLUDED.true_track,
+            vertical_rate    = EXCLUDED.vertical_rate,
+            geo_altitude     = EXCLUDED.geo_altitude,
+            squawk           = EXCLUDED.squawk,
+            spi              = EXCLUDED.spi,
+            position_source  = EXCLUDED.position_source,
+            category         = EXCLUDED.category,
+            last_upsert_at   = NOW()
+    )SQL");
 
-    if (!db.transaction()) {
-        qWarning() << "[DB] begin tx failed:" << db.lastError().text();
-    }
-
-    bool anyError = false;
+    auto jStr = [](const QJsonArray& a, int i) -> QVariant {
+        return (i < a.size() && !a.at(i).isNull()) ? a.at(i).toVariant() : QVariant();
+        };
 
     for (const QJsonValue& v : states) {
         if (!v.isArray()) continue;
         const QJsonArray a = v.toArray();
+        if (a.size() < 17) continue;
 
-        QSqlQuery q(db);              // fresh query each row
-        q.prepare(kUpsertSql);
-
-        auto bindMaybe = [&](const char* name, int idx) {
-            const QJsonValue vv = (idx < a.size() ? a.at(idx) : QJsonValue());
-            if (vv.isNull() || vv.isUndefined()) q.bindValue(name, QVariant());
-            else q.bindValue(name, vv.toVariant());
-            };
-
-        bindMaybe(":icao24", 0);
-        q.bindValue(":callsign", a.size() > 1 ? a.at(1).toString().trimmed() : QString());
-        bindMaybe(":origin_country", 2);
-        bindMaybe(":time_position", 3);
-        bindMaybe(":last_contact", 4);
-        bindMaybe(":lon", 5);
-        bindMaybe(":lat", 6);
-        bindMaybe(":baro_alt", 7);
-        bindMaybe(":on_ground", 8);
-        bindMaybe(":vel", 9);
-        bindMaybe(":track", 10);
-        bindMaybe(":v_rate", 11);
-
-        // sensors -> JSON string (or NULL)
-        if (a.size() > 12 && a.at(12).isArray()) {
-            const QByteArray json = QJsonDocument(a.at(12).toArray())
-                .toJson(QJsonDocument::Compact);
-            q.bindValue(":sensors", QString::fromUtf8(json));
-        }
-        else {
-            q.bindValue(":sensors", QVariant());
-        }
-
-        bindMaybe(":geo_alt", 13);
-        bindMaybe(":squawk", 14);
-        bindMaybe(":spi", 15);
-        bindMaybe(":pos_src", 16);
-        bindMaybe(":category", 17);
-
-        q.bindValue(":last_upsert_at", QDateTime::currentSecsSinceEpoch());
+        q.bindValue(":icao24", jStr(a, 0).toString());
+        q.bindValue(":callsign", jStr(a, 1));
+        q.bindValue(":origin_country", jStr(a, 2));
+        q.bindValue(":time_position", jStr(a, 3));
+        q.bindValue(":last_contact", jStr(a, 4));
+        q.bindValue(":longitude", jStr(a, 5));
+        q.bindValue(":latitude", jStr(a, 6));
+        q.bindValue(":baro_altitude", jStr(a, 7));
+        q.bindValue(":on_ground", jStr(a, 8));
+        q.bindValue(":velocity", jStr(a, 9));
+        q.bindValue(":true_track", jStr(a, 10));
+        q.bindValue(":vertical_rate", jStr(a, 11));
+        q.bindValue(":geo_altitude", jStr(a, 13));
+        q.bindValue(":squawk", jStr(a, 14));
+        q.bindValue(":spi", jStr(a, 15));
+        q.bindValue(":position_source", jStr(a, 16));
+        q.bindValue(":category", (a.size() > 17) ? jStr(a, 17) : QVariant());
 
         if (!q.exec()) {
-            anyError = true;
-            qWarning() << "[DB] upsert failed:" << q.lastError().text();
+            qWarning() << "[DB] states_live upsert failed:" << q.lastError().text();
+            db.rollback();
+            return;
         }
     }
 
-    if (db.driver()->hasFeature(QSqlDriver::Transactions)) {
-        if (anyError) {
-            if (!db.rollback())
-                qWarning() << "[DB] rollback failed:" << db.lastError().text();
-        }
-        else {
-            if (!db.commit())
-                qWarning() << "[DB] commit failed:" << db.lastError().text();
-        }
+    if (!db.commit()) {
+        qWarning() << "[DB] commit failed:" << db.lastError().text();
+        db.rollback();
     }
+
+    qInfo() << "[DB] states_live upsert rows =" << states.size();
+
 }
 
 bool OpenSkyFetcher::loadCredentials(QString* err)

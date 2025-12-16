@@ -32,6 +32,14 @@ void Bridge::setService(LiveFlightsService* s) {
 
     connect(service_, &LiveFlightsService::serviceError,
         this, &Bridge::error);
+
+	//  master timer to drive periodic updates
+    if (!masterTimer_) {
+        masterTimer_ = new QTimer(this);
+        connect(masterTimer_, &QTimer::timeout, this, &Bridge::onMasterTick);
+        masterTimer_->start(masterTickMs_);
+    }
+
 }
 
 void Bridge::setWeatherService(LiveWeatherService* s)
@@ -41,81 +49,49 @@ void Bridge::setWeatherService(LiveWeatherService* s)
 
     qInfo() << "[Bridge] Weather service attached";
 
+    // Forward weather JSON to JS only for now (later we can filter the DB)
     connect(weatherService_, &LiveWeatherService::weatherReady,
         this, [this](const QJsonObject& obj) {
 
-            //   1) STORE WEATHER IN DB  
-            QSqlDatabase db = QSqlDatabase::database();
-            if (db.isOpen()) {
-                QSqlQuery q(db);
-                q.prepare(
-                    "INSERT INTO weather_live(lat, lon, fetched_at, payload) "
-                    "VALUES (:lat, :lon, :t, CAST(:p AS jsonb)) "
-                    "ON CONFLICT(lat, lon) DO UPDATE SET "
-                    "fetched_at = EXCLUDED.fetched_at, "
-                    "payload    = EXCLUDED.payload"
-                );
-
-                q.bindValue(":lat", lastWeatherLat_);
-                q.bindValue(":lon", lastWeatherLon_);
-                q.bindValue(":t", QDateTime::currentSecsSinceEpoch());
-
-                const QString payloadText =
-                    QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
-                q.bindValue(":p", payloadText);
-
-                if (!q.exec()) {
-                    emit error(QString("weather DB insert failed: %1")
-                        .arg(q.lastError().text()));
-                }
-            }
-            else {
-                emit error("weather DB insert failed: DB not open");
-            }
-
-            //   2) STILL SEND TO JS  
             const QString json = QString::fromUtf8(
                 QJsonDocument(obj).toJson(QJsonDocument::Compact));
+
             emit weatherForTile(json);
         });
 
     connect(weatherService_, &LiveWeatherService::serviceError,
         this, &Bridge::error);
 
-    //  periodic weather refresh
-    if (!weatherRefreshTimer_) {
-        weatherRefreshTimer_ = new QTimer(this);
-        weatherRefreshTimer_->setInterval(weatherRefreshMs_);
+    // Ensure the single global clock exists (master timer).
+    if (!masterTimer_) {
+        masterTimer_ = new QTimer(this);
+        masterTimer_->setInterval(masterTickMs_);
+        connect(masterTimer_, &QTimer::timeout, this, &Bridge::onMasterTick);
+        masterTimer_->start();
 
-        connect(weatherRefreshTimer_, &QTimer::timeout, this, [this]() {
-            qInfo() << "[Bridge] Weather timer tick. hasAnchor=" << hasWeatherAnchor_
-                << "anchorLat=" << weatherAnchorLat_
-                << "anchorLon=" << weatherAnchorLon_;
-
-            if (!weatherService_) return;
-            if (!hasWeatherAnchor_) return;
-
-            requestWeatherAt(weatherAnchorLat_, weatherAnchorLon_);
-            });
-
-        weatherRefreshTimer_->start();
-        qInfo() << "[Bridge] Weather timer started, interval(ms)="
-            << weatherRefreshTimer_->interval();
+        qInfo() << "[Bridge] Master timer started, interval(ms)="
+            << masterTimer_->interval();
     }
 }
 
 void Bridge::requestWeatherAt(double lat, double lon)
 {
-    if (!weatherService_) return;
-
-    // we remember where this weather comes from
     lastWeatherLat_ = lat;
     lastWeatherLon_ = lon;
 
-    weatherService_->requestWeather(lat, lon);
+    qInfo() << "[Bridge] Request weather at" << lat << lon;
+
+    if (weatherService_) {
+        weatherService_->requestWeather(lat, lon);
+    }
+    else {
+        emit error("LiveWeatherService not set");
+    }
 }
 
-void Bridge::requestTileAt(double lat, double lon, int z) {
+
+void Bridge::requestTileAt(double lat, double lon, int z)
+{
     if (!service_) {
         emit error("LiveFlightsService not set");
         return;
@@ -126,12 +102,19 @@ void Bridge::requestTileAt(double lat, double lon, int z) {
 
     service_->requestTile(lat, lon, z);
 
-    // we update the weather “anchor” location to the clicked point
-    hasWeatherAnchor_ = true;
-    weatherAnchorLat_ = lat;
-    weatherAnchorLon_ = lon;
-    qInfo() << "[Bridge] Weather anchor set to" << weatherAnchorLat_ << weatherAnchorLon_;
+    // we update weather by requesting at the clicked point (anchor is managed by LiveWeatherService)
     requestWeatherAt(lat, lon);
+}
+
+void Bridge::onMasterTick() {
+    // we flush flights cache to DB
+    if (service_) service_->onTick();
+
+    // we flush weather cache to DB
+    if (weatherService_) weatherService_->onTick();
+
+    qInfo() << "[MasterTick]";
+
 }
 
 void Bridge::setGeoFilter(double minLat, double maxLat,

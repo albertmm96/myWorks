@@ -24,7 +24,7 @@ public:
     // public setter to configure credentials
     void setBasicAuth(const QString& user, const QString& pass);
 	// inserts states from obj["states"] into the given db (or default connection if none given)
-    void insertStatesToDb(const QJsonObject& obj, QSqlDatabase db = QSqlDatabase());
+    void insertStatesToDb(const QJsonObject& obj);
 
 signals:
     void dataReady(const QJsonDocument&);
