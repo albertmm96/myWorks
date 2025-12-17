@@ -4,6 +4,9 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QJsonDocument>
+#include <QDateTime>
+#include <cmath>
 
 LiveWeatherService::LiveWeatherService(OpenWeatherFetcher* fetcher, QObject* parent)
     : QObject(parent), fetcher_(fetcher) {
@@ -27,10 +30,23 @@ void LiveWeatherService::requestWeather(double lat, double lon) {
     if (fetcher_) fetcher_->fetchCurrentWeather(lat, lon);
 }
 
-void LiveWeatherService::onTick(){
-    if (cache_.isEmpty()) return;
+void LiveWeatherService::onTick()
+{
+    if (cache_.isEmpty())
+        return;
 
-    // we prefer lat/lon from the response if present; otherwise fall back to your anchor
+    auto sqlQuoted = [](QString s) -> QString {
+        s.replace('\'', "''");
+        return "'" + s + "'";
+        };
+
+    QSqlDatabase db = QSqlDatabase::database("pg_weather");
+    if (!db.isOpen()) {
+        emit serviceError("weather upsert failed: pg_weather not open");
+        return;
+    }
+
+    // choose lat/lon: we prefer anchor (we set it on click), but if coord exists we use it.
     double lat = anchorLat_;
     double lon = anchorLon_;
     if (cache_.contains("coord") && cache_["coord"].isObject()) {
@@ -40,34 +56,31 @@ void LiveWeatherService::onTick(){
     }
 
     const qint64 fetchedAt = QDateTime::currentSecsSinceEpoch();
-    const QByteArray payloadJson = QJsonDocument(cache_).toJson(QJsonDocument::Compact);
+    const QString payload = QString::fromUtf8(
+        QJsonDocument(cache_).toJson(QJsonDocument::Compact)
+    );
 
-    QSqlDatabase db = QSqlDatabase::database("pg_weather");
-    if (!db.isOpen()) {
-        emit serviceError("weather upsert failed: DB not open");
+    const QString sql = QString(
+        "INSERT INTO weather_live (lat, lon, fetched_at, payload) "
+        "VALUES (%1, %2, %3, CAST(%4 AS jsonb)) "
+        "ON CONFLICT (lat, lon) DO UPDATE SET "
+        "fetched_at = EXCLUDED.fetched_at, "
+        "payload    = EXCLUDED.payload;"
+    )
+        .arg(QString::number(lat, 'f', 6))
+        .arg(QString::number(lon, 'f', 6))
+        .arg(QString::number(fetchedAt))
+        .arg(sqlQuoted(payload));
+
+    QSqlQuery q(db);
+    if (!q.exec(sql)) {
+        emit serviceError(QString("weather upsert failed: %1").arg(q.lastError().text()));
         return;
     }
 
-    QSqlQuery q(db);
-    q.prepare(R"SQL(
-        INSERT INTO weather_live (lat, lon, fetched_at, payload)
-        VALUES (:lat, :lon, :fetched_at, CAST(:payload AS jsonb))
-        ON CONFLICT (lat, lon) DO UPDATE
-        SET fetched_at = EXCLUDED.fetched_at,
-            payload    = EXCLUDED.payload
-    )SQL");
-
-    q.bindValue(":lat", lat);
-    q.bindValue(":lon", lon);
-    q.bindValue(":fetched_at", fetchedAt);
-    q.bindValue(":payload", QString::fromUtf8(payloadJson));
-
-    if (!q.exec()) {
-        emit serviceError(QString("weather upsert failed: %1").arg(q.lastError().text()));
-    }
-
-    // Auto-refresh: fetch again if TTL expired
-    if (!hasAnchor_ || !fetcher_) return;
+    // Optional auto-refresh on TTL (only if you want no-click refresh)
+    if (!hasAnchor_ || !fetcher_)
+        return;
 
     const qint64 ageSec = cacheTs_.isValid()
         ? cacheTs_.secsTo(QDateTime::currentDateTimeUtc())
@@ -76,5 +89,4 @@ void LiveWeatherService::onTick(){
     if (ageSec > ttlSeconds_) {
         fetcher_->fetchCurrentWeather(anchorLat_, anchorLon_);
     }
-
 }

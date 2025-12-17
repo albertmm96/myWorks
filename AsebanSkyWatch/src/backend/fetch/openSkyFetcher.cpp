@@ -17,6 +17,8 @@
 #include <QUrl>
 #include <QDateTime>
 #include <QSqlDriver>
+#include <QtSql/QSqlDatabase>
+#include <cmath>
 
 OpenSkyFetcher::OpenSkyFetcher(QObject* parent) : QObject(parent) {
     // we don’t connect finished globally anymore
@@ -229,20 +231,48 @@ void OpenSkyFetcher::setBasicAuth(const QString& user, const QString& pass)
     basicAuth_ = (user + ":" + pass).toUtf8().toBase64();
 }
 
-void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj){
+void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj)
+{
+    // helpers local to this function: safe SQL literals without prepared statements, to solve conflict
+    auto sqlQuoted = [](QString s) -> QString {
+        s.replace('\'', "''");
+        return "'" + s + "'";
+        };
+
+    auto sqlVal = [&](const QJsonValue& v) -> QString {
+        if (v.isUndefined() || v.isNull()) return "NULL";
+        if (v.isBool()) return v.toBool() ? "TRUE" : "FALSE";
+
+        if (v.isDouble()) {
+            const double d = v.toDouble();
+            const double rd = std::round(d);
+            // if it is effectively an integer (time_position/last_contact/position_source), emit integer.
+            if (std::fabs(d - rd) < 1e-9) return QString::number(static_cast<qint64>(rd));
+            return QString::number(d, 'f', 6);
+        }
+
+        // strings / everything else
+        return sqlQuoted(v.toVariant().toString());
+        };
+
     const QJsonValue statesVal = obj.value("states");
     if (!statesVal.isArray())
         return;
 
-    QSqlDatabase db = QSqlDatabase::database("pg_flights");
-    if (!db.isOpen()) {
-        qWarning() << "[DB] insertStatesToDb: database not open";
-        return;
-    }
-
     const QJsonArray states = statesVal.toArray();
     if (states.isEmpty())
         return;
+
+    QSqlDatabase db = QSqlDatabase::database("pg_flights");
+    if (!db.isOpen()) {
+        qWarning() << "[DB] insertStatesToDb: pg_flights not open";
+        return;
+    }
+
+    qInfo() << "[DB] flights conn="
+        << db.connectionName()
+        << "db="
+        << db.databaseName();
 
     if (!db.transaction()) {
         qWarning() << "[DB] transaction start failed:" << db.lastError().text();
@@ -250,68 +280,87 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj){
     }
 
     QSqlQuery q(db);
+    const qint64 upsertAt = QDateTime::currentSecsSinceEpoch();
 
-    q.prepare(R"SQL(
-        INSERT INTO states_live (
-            icao24, callsign, origin_country, time_position, last_contact,
-            longitude, latitude, baro_altitude, on_ground, velocity,
-            true_track, vertical_rate, geo_altitude, squawk, spi,
-            position_source, category, last_upsert_at
-        )
-        VALUES (
-            :icao24, :callsign, :origin_country, :time_position, :last_contact,
-            :longitude, :latitude, :baro_altitude, :on_ground, :velocity,
-            :true_track, :vertical_rate, :geo_altitude, :squawk, :spi,
-            :position_source, :category, NOW()
-        )
-        ON CONFLICT (icao24) DO UPDATE SET
-            callsign         = EXCLUDED.callsign,
-            origin_country   = EXCLUDED.origin_country,
-            time_position    = EXCLUDED.time_position,
-            last_contact     = EXCLUDED.last_contact,
-            longitude        = EXCLUDED.longitude,
-            latitude         = EXCLUDED.latitude,
-            baro_altitude    = EXCLUDED.baro_altitude,
-            on_ground        = EXCLUDED.on_ground,
-            velocity         = EXCLUDED.velocity,
-            true_track       = EXCLUDED.true_track,
-            vertical_rate    = EXCLUDED.vertical_rate,
-            geo_altitude     = EXCLUDED.geo_altitude,
-            squawk           = EXCLUDED.squawk,
-            spi              = EXCLUDED.spi,
-            position_source  = EXCLUDED.position_source,
-            category         = EXCLUDED.category,
-            last_upsert_at   = NOW()
-    )SQL");
-
-    auto jStr = [](const QJsonArray& a, int i) -> QVariant {
-        return (i < a.size() && !a.at(i).isNull()) ? a.at(i).toVariant() : QVariant();
-        };
-
-    for (const QJsonValue& v : states) {
-        if (!v.isArray()) continue;
-        const QJsonArray a = v.toArray();
+    for (const QJsonValue& rowV : states) {
+        if (!rowV.isArray()) continue;
+        const QJsonArray a = rowV.toArray();
         if (a.size() < 17) continue;
 
-        q.bindValue(":icao24", jStr(a, 0).toString());
-        q.bindValue(":callsign", jStr(a, 1));
-        q.bindValue(":origin_country", jStr(a, 2));
-        q.bindValue(":time_position", jStr(a, 3));
-        q.bindValue(":last_contact", jStr(a, 4));
-        q.bindValue(":longitude", jStr(a, 5));
-        q.bindValue(":latitude", jStr(a, 6));
-        q.bindValue(":baro_altitude", jStr(a, 7));
-        q.bindValue(":on_ground", jStr(a, 8));
-        q.bindValue(":velocity", jStr(a, 9));
-        q.bindValue(":true_track", jStr(a, 10));
-        q.bindValue(":vertical_rate", jStr(a, 11));
-        q.bindValue(":geo_altitude", jStr(a, 13));
-        q.bindValue(":squawk", jStr(a, 14));
-        q.bindValue(":spi", jStr(a, 15));
-        q.bindValue(":position_source", jStr(a, 16));
-        q.bindValue(":category", (a.size() > 17) ? jStr(a, 17) : QVariant());
+        const QString icao24 = a.at(0).toString().trimmed();
+        if (icao24.isEmpty()) continue;
 
-        if (!q.exec()) {
+        const QString callsign = (a.size() > 1) ? a.at(1).toString().trimmed() : QString();
+
+        // Map OpenSky state vector indices to your states_live columns:
+        // 0 icao24
+        // 1 callsign
+        // 2 origin_country
+        // 3 time_position
+        // 4 last_contact
+        // 5 longitude
+        // 6 latitude
+        // 7 baro_altitude
+        // 8 on_ground
+        // 9 velocity
+        // 10 true_track
+        // 11 vertical_rate
+        // 13 geo_altitude
+        // 14 squawk
+        // 15 spi
+        // 16 position_source
+        // 17 category (optional)
+
+        const QString sql = QString(
+            "INSERT INTO states_live ("
+            "icao24, callsign, origin_country, time_position, last_contact, "
+            "longitude, latitude, baro_altitude, on_ground, velocity, "
+            "true_track, vertical_rate, geo_altitude, squawk, spi, "
+            "position_source, category, last_upsert_at"
+            ") VALUES ("
+            "%1, %2, %3, %4, %5, "
+            "%6, %7, %8, %9, %10, "
+            "%11, %12, %13, %14, %15, "
+            "%16, %17, %18"
+            ") ON CONFLICT (icao24) DO UPDATE SET "
+            "callsign=EXCLUDED.callsign, "
+            "origin_country=EXCLUDED.origin_country, "
+            "time_position=EXCLUDED.time_position, "
+            "last_contact=EXCLUDED.last_contact, "
+            "longitude=EXCLUDED.longitude, "
+            "latitude=EXCLUDED.latitude, "
+            "baro_altitude=EXCLUDED.baro_altitude, "
+            "on_ground=EXCLUDED.on_ground, "
+            "velocity=EXCLUDED.velocity, "
+            "true_track=EXCLUDED.true_track, "
+            "vertical_rate=EXCLUDED.vertical_rate, "
+            "geo_altitude=EXCLUDED.geo_altitude, "
+            "squawk=EXCLUDED.squawk, "
+            "spi=EXCLUDED.spi, "
+            "position_source=EXCLUDED.position_source, "
+            "category=EXCLUDED.category, "
+            "last_upsert_at=EXCLUDED.last_upsert_at;"
+        )
+            .arg(sqlQuoted(icao24))
+            .arg(callsign.isEmpty() ? "NULL" : sqlQuoted(callsign))
+            .arg(sqlVal(a.at(2)))
+            .arg(sqlVal(a.at(3)))
+            .arg(sqlVal(a.at(4)))
+            .arg(sqlVal(a.at(5)))
+            .arg(sqlVal(a.at(6)))
+            .arg(sqlVal(a.at(7)))
+            .arg(sqlVal(a.at(8)))
+            .arg(sqlVal(a.at(9)))
+            .arg(sqlVal(a.at(10)))
+            .arg(sqlVal(a.at(11)))
+            .arg(sqlVal(a.at(13)))
+            .arg(sqlVal(a.at(14)))
+            .arg(sqlVal(a.at(15)))
+            .arg(sqlVal(a.at(16)))
+            .arg((a.size() > 17) ? sqlVal(a.at(17)) : QString("NULL"))
+            .arg(QString::number(upsertAt));
+
+        if (!q.exec(sql)) {
             qWarning() << "[DB] states_live upsert failed:" << q.lastError().text();
             db.rollback();
             return;
@@ -321,10 +370,20 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj){
     if (!db.commit()) {
         qWarning() << "[DB] commit failed:" << db.lastError().text();
         db.rollback();
+        return;
     }
 
-    qInfo() << "[DB] states_live upsert rows =" << states.size();
-
+    QSqlQuery chk(db);
+    if (chk.exec("SELECT COUNT(*), MAX(last_upsert_at) FROM states_live;") && chk.next()) {
+        qInfo() << "[DB CHECK] states_live rows="
+            << chk.value(0).toLongLong()
+            << "max(last_upsert_at)="
+            << chk.value(1).toLongLong();
+    }
+    else {
+        qWarning() << "[DB CHECK] failed:"
+            << chk.lastError().text();
+    }
 }
 
 bool OpenSkyFetcher::loadCredentials(QString* err)

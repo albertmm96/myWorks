@@ -40,7 +40,6 @@ static QSqlDatabase openPgConnection(const QString& connName)
     db.setDatabaseName("Utilisateur");
     db.setUserName("postgres");
     db.setPassword("Jujux236");
-    // ====================================
 
     if (!db.open()) {
         qCritical() << "Database connection failed for" << connName << ":" << db.lastError().text();

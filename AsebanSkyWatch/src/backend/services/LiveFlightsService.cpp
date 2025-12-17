@@ -60,6 +60,10 @@ void LiveFlightsService::onTick()
     // deterministic DB flush ONCE per tick using the existing parsing:
     // OpenSkyFetcher::insertStatesToDb reads obj["states"] array and maps indices -> columns.
     if (!lastMerged_.isEmpty()) {
+		// confirm on-tick refresh
+        qInfo() << "[Tick] activeTiles=" << activeTiles_.size()
+            << "lastMergedEmpty=" << lastMerged_.isEmpty();
+        
         fetcher_->insertStatesToDb(lastMerged_);
     }
 
