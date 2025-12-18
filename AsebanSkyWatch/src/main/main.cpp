@@ -163,11 +163,21 @@ int main(int argc, char* argv[])
         "  lat DOUBLE PRECISION NOT NULL,"
         "  lon DOUBLE PRECISION NOT NULL,"
         "  fetched_at BIGINT NOT NULL,"
-        "  payload JSONB NOT NULL,"
+        "  temp_c DOUBLE PRECISION,"
+        "  feels_like_c DOUBLE PRECISION,"
+        "  humidity_pct INTEGER,"
+        "  pressure_hpa INTEGER,"
+        "  wind_speed_ms DOUBLE PRECISION,"
+        "  wind_deg INTEGER,"
+        "  clouds_pct INTEGER,"
+        "  weather_main TEXT,"
+        "  weather_desc TEXT,"
+        "  city_name TEXT,"
         "  time TIMESTAMPTZ DEFAULT NOW(),"
         "  UNIQUE(lat, lon)"
         ");"
     );
+
 
     // create index on last_contact for faster lookups of most recent states
     runQuery(query,
@@ -180,6 +190,21 @@ int main(int argc, char* argv[])
         "CREATE INDEX IF NOT EXISTS weather_live_fetched_at_idx "
         "ON weather_live (fetched_at DESC);"
     );
+
+    runQuery(query,
+        "ALTER TABLE weather_live "
+        "ADD COLUMN IF NOT EXISTS temp_c DOUBLE PRECISION, "
+        "ADD COLUMN IF NOT EXISTS feels_like_c DOUBLE PRECISION, "
+        "ADD COLUMN IF NOT EXISTS humidity_pct INTEGER, "
+        "ADD COLUMN IF NOT EXISTS pressure_hpa INTEGER, "
+        "ADD COLUMN IF NOT EXISTS wind_speed_ms DOUBLE PRECISION, "
+        "ADD COLUMN IF NOT EXISTS wind_deg INTEGER, "
+        "ADD COLUMN IF NOT EXISTS clouds_pct INTEGER, "
+        "ADD COLUMN IF NOT EXISTS weather_main TEXT, "
+        "ADD COLUMN IF NOT EXISTS weather_desc TEXT, "
+        "ADD COLUMN IF NOT EXISTS city_name TEXT;"
+    );
+
 
     // GUI
     MainWindow w;
