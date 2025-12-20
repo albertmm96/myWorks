@@ -12,7 +12,10 @@ public:
     using QObject::QObject;
 
     void setService(LiveFlightsService* s);
-    Q_INVOKABLE QString currentFlightsJson() const { return lastJson_; }
+    Q_INVOKABLE QString currentFlightsJson() const
+    {
+        return (filterEnabled_ ? lastJsonFiltered_ : lastJsonFull_);
+    }
     Q_INVOKABLE void setGeoFilter(double minLat, double maxLat, double minLon, double maxLon);
 
     void setWeatherService(LiveWeatherService* s);
@@ -34,7 +37,8 @@ private:
     LiveFlightsService* service_ = nullptr;
     LiveWeatherService* weatherService_ = nullptr;
 
-    QString lastJson_;
+    QString lastJsonFull_;
+    QString lastJsonFiltered_;
 
     bool   filterEnabled_ = false;
     double minLat_ = -90.0;

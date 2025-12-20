@@ -1,12 +1,93 @@
 #include "LiveFlightsService.h"
 #include "openSkyFetcher.h"
 #include "tile_math.h"
+
 #include <algorithm>
+#include <cmath>
+#include <QtSql/QSqlDatabase>
+#include <QtSql/QSqlQuery>
+#include <QtSql/QSqlError>
 
 LiveFlightsService::LiveFlightsService(OpenSkyFetcher* fetcher, QObject* parent)
     : QObject(parent), fetcher_(fetcher)
 {
 
+}
+
+bool LiveFlightsService::passesGeoFilter(const QJsonArray& state) const
+{
+    if (!filterEnabled_) return true;
+    if (state.size() <= 6) return false;
+
+    const QJsonValue lonV = state.at(5);
+    const QJsonValue latV = state.at(6);
+    if (!lonV.isDouble() || !latV.isDouble()) return false;
+
+    const double lon = lonV.toDouble();
+    const double lat = latV.toDouble();
+
+    if (std::isnan(lat) || std::isnan(lon)) return false;
+    return (lat >= minLat_ && lat <= maxLat_ && lon >= minLon_ && lon <= maxLon_);
+}
+
+void LiveFlightsService::purgeDbOutsideFilter()
+{
+    if (!filterEnabled_) return;
+
+    QSqlDatabase db = QSqlDatabase::database("pg_flights");
+    if (!db.isValid() || !db.isOpen()) {
+        qWarning() << "[LiveFlightsService] purgeDbOutsideFilter: pg_flights not open";
+        return;
+    }
+
+    QSqlQuery q(db);
+    q.prepare(
+        "DELETE FROM states_live "
+        "WHERE latitude IS NULL OR longitude IS NULL "
+        "   OR latitude < :minLat OR latitude > :maxLat "
+        "   OR longitude < :minLon OR longitude > :maxLon;"
+    );
+    q.bindValue(":minLat", minLat_);
+    q.bindValue(":maxLat", maxLat_);
+    q.bindValue(":minLon", minLon_);
+    q.bindValue(":maxLon", maxLon_);
+
+    if (!q.exec()) {
+        qWarning() << "[LiveFlightsService] purge states_live failed:" << q.lastError().text();
+    }
+    else {
+        qInfo() << "[LiveFlightsService] purged states_live outside filter rect";
+    }
+}
+
+void LiveFlightsService::setGeoFilter(double minLat, double maxLat, double minLon, double maxLon)
+{
+    // normalize
+    if (minLat > maxLat) std::swap(minLat, maxLat);
+    if (minLon > maxLon) std::swap(minLon, maxLon);
+
+    minLat_ = minLat;
+    maxLat_ = maxLat;
+    minLon_ = minLon;
+    maxLon_ = maxLon;
+    filterEnabled_ = true;
+
+    // we remove out-of-rect from in-memory union, so it won't be flushed back
+    for (auto it = byIcao_.begin(); it != byIcao_.end(); ) {
+        if (!passesGeoFilter(it.value())) it = byIcao_.erase(it);
+        else ++it;
+    }
+
+    // we purge DB outside rect to match UI immediately
+    purgeDbOutsideFilter();
+
+    // we emit a fresh merged snapshot
+    emitMerged();
+}
+
+void LiveFlightsService::clearGeoFilter()
+{
+    filterEnabled_ = false;
 }
 
 // called from bridge when the user moves the map
@@ -83,6 +164,20 @@ void LiveFlightsService::onTick()
 void LiveFlightsService::fetchTile(const TileKey& key) {
     auto [minLat, minLon, maxLat, maxLon] = tilemath::tileBBox(key.x, key.y, key.z);
 
+    // if a geo filter is enabled, shrink the request bbox to its intersection
+    // this prevents out-of-rect states from being returned and subsequently re-inserted
+    if (filterEnabled_) {
+        minLat = std::max(minLat, minLat_);
+        maxLat = std::min(maxLat, maxLat_);
+        minLon = std::max(minLon, minLon_);
+        maxLon = std::min(maxLon, maxLon_);
+
+        // no overlap => nothing to fetch.
+        if (minLat >= maxLat || minLon >= maxLon) {
+            return;
+        }
+    }
+
     fetcher_->fetchStatesBBox(
         minLat, minLon, maxLat, maxLon,
         // onOk
@@ -106,9 +201,34 @@ void LiveFlightsService::foldStatesIntoMerged(const QJsonObject& obj)
     const QJsonArray states = obj.value("states").toArray();
     for (const auto& v : states) {
         if (!v.isArray()) continue;
+
         const QJsonArray a = v.toArray();
-        if (a.isEmpty() || !a.at(0).isString()) continue;       // need icao24 at [0]
+        if (a.isEmpty() || !a.at(0).isString()) continue; // icao24 at [0]
         const QString icao = a.at(0).toString();
+
+        // if filter enabled: any state outside filter removes the cached entry,
+        // so it cannot be flushed later.
+        if (filterEnabled_) {
+            if (a.size() <= 6) {
+                byIcao_.remove(icao);
+                continue;
+            }
+            const QJsonValue lonV = a.at(5);
+            const QJsonValue latV = a.at(6);
+            if (!lonV.isDouble() || !latV.isDouble()) {
+                byIcao_.remove(icao);
+                continue;
+            }
+            const double lon = lonV.toDouble();
+            const double lat = latV.toDouble();
+
+            if (std::isnan(lat) || std::isnan(lon) ||
+                lat < minLat_ || lat > maxLat_ ||
+                lon < minLon_ || lon > maxLon_) {
+                byIcao_.remove(icao);
+                continue;
+            }
+        }
 
         auto it = byIcao_.find(icao);
         if (it == byIcao_.end()) {
@@ -125,8 +245,29 @@ void LiveFlightsService::foldStatesIntoMerged(const QJsonObject& obj)
 void LiveFlightsService::emitMerged()
 {
     QJsonArray merged;
-    for (const auto& a : byIcao_)
+
+    for (auto it = byIcao_.cbegin(); it != byIcao_.cend(); ++it) {
+        const QJsonArray a = it.value();
+
+        // a defensive filter at emission time too (prevents any slip-through)
+        if (filterEnabled_) {
+            if (a.size() <= 6) continue;
+            const QJsonValue lonV = a.at(5);
+            const QJsonValue latV = a.at(6);
+            if (!lonV.isDouble() || !latV.isDouble()) continue;
+
+            const double lon = lonV.toDouble();
+            const double lat = latV.toDouble();
+
+            if (std::isnan(lat) || std::isnan(lon) ||
+                lat < minLat_ || lat > maxLat_ ||
+                lon < minLon_ || lon > maxLon_) {
+                continue;
+            }
+        }
+
         merged.append(a);
+    }
 
     QJsonObject payload;
     payload.insert("time", static_cast<qint64>(QDateTime::currentSecsSinceEpoch()));
@@ -134,7 +275,6 @@ void LiveFlightsService::emitMerged()
 
     // we keep last merged snapshot for deterministic DB flush on master tick
     lastMerged_ = payload;
-
     emit flightsMergedReady(payload);
 }
 

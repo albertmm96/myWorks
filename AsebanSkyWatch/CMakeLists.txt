@@ -8,12 +8,12 @@ endif()
 
 project("AsebanSkyWatch")
 
-# activer le MOC/UIC automatique si on utilise .ui/rcc
+# activate the automatic handling of Qt's MOC, UIC, and RCC
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-# la cible existante (on conserve le nom)
+# the existing source files
 add_executable(AsebanSkyWatch
     src/main/main.cpp
     src/main/main.h
@@ -31,22 +31,22 @@ add_executable(AsebanSkyWatch
     "$<TARGET_FILE_DIR:AsebanSkyWatch>/credentials.json"
 )
 
-# définir la version C++
+# define the C++ standard if supported by the CMake version
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET AsebanSkyWatch PROPERTY CXX_STANDARD 20)
 endif()
 
-# indiquer où trouver le dossier Qt
+# show where to find Qt installation
 set(CMAKE_PREFIX_PATH "D:/MyApps/Qt/6.9.1/msvc2022_64")
 
-# chercher les packages Qt nécessaires au projet
+# we search for the Qt6 packages we need
 find_package(Qt6 COMPONENTS REQUIRED
     Widgets Gui Core
     Sql Network
     WebChannel Positioning WebEngineCore WebEngineWidgets)
 
 
-# lier Qt à son exécutable
+# link the Qt6 libraries to the executable
 target_link_libraries(AsebanSkyWatch PRIVATE 
     Qt6::Widgets Qt6::Gui Qt6::Core
     Qt6::Sql Qt6::Network
