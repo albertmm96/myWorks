@@ -23,11 +23,9 @@ void Bridge::setService(LiveFlightsService* s) {
     // we forward merged snapshots to JS, applying filter if enabled
     connect(service_, &LiveFlightsService::flightsMergedReady,
         this, [this](const QJsonObject& obj) {
-            // we always keep the full snapshot as compact JSON
             lastJsonFull_ = QString::fromUtf8(
                 QJsonDocument(obj).toJson(QJsonDocument::Compact));
-
-            emitFilteredJson(obj);
+            emit flightsForTile(lastJsonFull_);
         });
 
     connect(service_, &LiveFlightsService::serviceError,
@@ -97,9 +95,8 @@ void Bridge::requestTileAt(double lat, double lon, int z)
         return;
     }
 
-    // on each click, reset filter so all flights for the new tiles are shown
+    // on each click, we reset any backend geo filter so DB can repopulate freely
     filterEnabled_ = false;
-    lastJsonFiltered_.clear();
 
     if (service_) {
         service_->clearGeoFilter();
@@ -107,7 +104,7 @@ void Bridge::requestTileAt(double lat, double lon, int z)
 
     service_->requestTile(lat, lon, z);
 
-    // we update weather by requesting at the clicked point (anchor is managed by LiveWeatherService)
+    // we update weather for the clicked point
     requestWeatherAt(lat, lon);
 }
 
@@ -122,10 +119,8 @@ void Bridge::onMasterTick() {
 
 }
 
-void Bridge::setGeoFilter(double minLat, double maxLat,
-    double minLon, double maxLon)
+void Bridge::setGeoFilter(double minLat, double maxLat, double minLon, double maxLon)
 {
-    // normalize in case caller swaps min/max
     if (minLat > maxLat) std::swap(minLat, maxLat);
     if (minLon > maxLon) std::swap(minLon, maxLon);
 
@@ -136,69 +131,4 @@ void Bridge::setGeoFilter(double minLat, double maxLat,
     filterEnabled_ = true;
 
     if (service_) service_->setGeoFilter(minLat_, maxLat_, minLon_, maxLon_);
-
-    // if the range is degenerate (slider at its minimum etc.), treat as "no filter"
-    if ((maxLat_ - minLat_) < 1e-6 || (maxLon_ - minLon_) < 1e-6) {
-        filterEnabled_ = false;
-        lastJsonFiltered_.clear();
-        if (!lastJsonFull_.isEmpty())
-            emit flightsForTile(lastJsonFull_);
-        return;
-    }
-
-    // we re-apply filter on the last *full* snapshot so the map updates immediately
-    if (lastJsonFull_.isEmpty())
-        return;
-
-    const auto doc = QJsonDocument::fromJson(lastJsonFull_.toUtf8());
-    if (!doc.isObject())
-        return;
-
-    emitFilteredJson(doc.object());
-}
-
-void Bridge::emitFilteredJson(const QJsonObject& obj)
-{
-    // if filter off, just send the full JSON as-is
-    if (!filterEnabled_) {
-        if (!lastJsonFull_.isEmpty())
-            emit flightsForTile(lastJsonFull_);
-        return;
-    }
-
-    const QJsonArray inStates = obj.value("states").toArray();
-    QJsonArray outStates;
-
-    for (const auto& v : inStates) {
-        if (!v.isArray()) continue;
-        const QJsonArray a = v.toArray();
-        if (a.size() <= 6) continue;
-
-        const QJsonValue lonV = a.at(5);
-        const QJsonValue latV = a.at(6);
-        if (!lonV.isDouble() || !latV.isDouble()) continue;
-
-        const double lon = lonV.toDouble();
-        const double lat = latV.toDouble();
-
-        if (lat >= minLat_ && lat <= maxLat_ &&
-            lon >= minLon_ && lon <= maxLon_) {
-            outStates.append(a);
-        }
-    }
-
-    QJsonObject outObj = obj;
-    outObj.insert("states", outStates);
-
-    const QString json = QString::fromUtf8(
-        QJsonDocument(outObj).toJson(QJsonDocument::Compact));
-
-    lastJsonFiltered_ = json;   // DO NOT overwrite lastJsonFull_
-
-    qDebug() << "[Bridge] filtering" << inStates.size() << "states with rect lat"
-        << minLat_ << "->" << maxLat_
-        << "lon" << minLon_ << "->" << maxLon_
-        << "=> kept" << outStates.size();
-
-    emit flightsForTile(json);
 }

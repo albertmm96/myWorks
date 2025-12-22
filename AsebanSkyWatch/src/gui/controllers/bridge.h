@@ -14,7 +14,7 @@ public:
     void setService(LiveFlightsService* s);
     Q_INVOKABLE QString currentFlightsJson() const
     {
-        return (filterEnabled_ ? lastJsonFiltered_ : lastJsonFull_);
+        return lastJsonFull_;
     }
     Q_INVOKABLE void setGeoFilter(double minLat, double maxLat, double minLon, double maxLon);
 
@@ -38,7 +38,6 @@ private:
     LiveWeatherService* weatherService_ = nullptr;
 
     QString lastJsonFull_;
-    QString lastJsonFiltered_;
 
     bool   filterEnabled_ = false;
     double minLat_ = -90.0;
@@ -53,5 +52,4 @@ private:
     QTimer* masterTimer_ = nullptr;
     int masterTickMs_ = 3000; // match flights cadence initially
 
-    void emitFilteredJson(const QJsonObject& obj);
 };

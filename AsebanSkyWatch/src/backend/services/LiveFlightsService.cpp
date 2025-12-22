@@ -7,6 +7,7 @@
 #include <QtSql/QSqlDatabase>
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
+#include <QVariant>
 
 LiveFlightsService::LiveFlightsService(OpenSkyFetcher* fetcher, QObject* parent)
     : QObject(parent), fetcher_(fetcher)
@@ -60,6 +61,85 @@ void LiveFlightsService::purgeDbOutsideFilter()
     }
 }
 
+QJsonObject LiveFlightsService::readStatesLiveFromDb() const
+{
+    QJsonObject payload;
+    payload.insert("time", static_cast<qint64>(QDateTime::currentSecsSinceEpoch()));
+
+    QSqlDatabase db = QSqlDatabase::database("pg_flights");
+    if (!db.isValid() || !db.isOpen()) {
+        payload.insert("states", QJsonArray{});
+        return payload;
+    }
+
+    QSqlQuery q(db);
+
+    const QString sql =
+        "SELECT icao24, callsign, origin_country, time_position, last_contact, "
+        "       longitude, latitude, baro_altitude, on_ground, velocity, "
+        "       true_track, vertical_rate, geo_altitude, squawk, spi, "
+        "       position_source, category "
+        "FROM states_live";
+
+    if (!q.exec(sql)) {
+        qWarning() << "[LiveFlightsService] readStatesLiveFromDb failed:" << q.lastError().text();
+        payload.insert("states", QJsonArray{});
+        return payload;
+    }
+
+    auto vOrNull = [](const QVariant& v) -> QJsonValue {
+        return v.isNull() ? QJsonValue(QJsonValue::Null) : QJsonValue::fromVariant(v);
+        };
+
+    QJsonArray states;
+    while (q.next()) {
+        QJsonArray a;
+
+        // the helper to append value or null
+        auto appendOrNull = [&](const QVariant& v) {
+            if (v.isNull())
+                a.append(QJsonValue(QJsonValue::Null));
+            else
+                a.append(QJsonValue::fromVariant(v));
+            };
+
+        appendOrNull(q.value(0));   // [0]  icao24
+        appendOrNull(q.value(1));   // [1]  callsign
+        appendOrNull(q.value(2));   // [2]  origin_country
+        appendOrNull(q.value(3));   // [3]  time_position
+        appendOrNull(q.value(4));   // [4]  last_contact
+        appendOrNull(q.value(5));   // [5]  longitude
+        appendOrNull(q.value(6));   // [6]  latitude
+        appendOrNull(q.value(7));   // [7]  baro_altitude
+        appendOrNull(q.value(8));   // [8]  on_ground
+        appendOrNull(q.value(9));   // [9]  velocity
+        appendOrNull(q.value(10));  // [10] true_track
+        appendOrNull(q.value(11));  // [11] vertical_rate
+
+        a.append(QJsonValue(QJsonValue::Null)); // [12] sensors (not stored)
+
+        appendOrNull(q.value(12));  // [13] geo_altitude
+        appendOrNull(q.value(13));  // [14] squawk
+        appendOrNull(q.value(14));  // [15] spi
+        appendOrNull(q.value(15));  // [16] position_source
+        appendOrNull(q.value(16));  // [17] category
+
+        states.append(a);
+    }
+
+    payload.insert("states", states);
+    return payload;
+}
+
+void LiveFlightsService::emitFromDb()
+{
+    // lastMerged_ now becomes “what DB currently contains”
+    const QJsonObject payload = readStatesLiveFromDb();
+    lastMerged_ = payload;
+    emit flightsMergedReady(payload);
+}
+
+
 void LiveFlightsService::setGeoFilter(double minLat, double maxLat, double minLon, double maxLon)
 {
     // normalize
@@ -78,16 +158,17 @@ void LiveFlightsService::setGeoFilter(double minLat, double maxLat, double minLo
         else ++it;
     }
 
-    // we purge DB outside rect to match UI immediately
+    // purge DB outside rect to make DB the truth immediately
     purgeDbOutsideFilter();
 
-    // we emit a fresh merged snapshot
-    emitMerged();
+    // emit strictly from DB (map must show only what DB contains)
+    emitFromDb();
 }
 
 void LiveFlightsService::clearGeoFilter()
 {
     filterEnabled_ = false;
+    emitFromDb();
 }
 
 // called from bridge when the user moves the map
@@ -134,19 +215,23 @@ void LiveFlightsService::onTick()
         }
     }
 
-    // the housekeeping and emit merged snapshot (also updates lastMerged_)
+    // housekeeping; build merged snapshot in memory (for DB flush)
     pruneStale();
-    emitMerged();
+    emitMerged(); // must update lastMerged_, but must NOT emit to UI anymore
 
-    // deterministic DB flush ONCE per tick using the existing parsing:
-    // OpenSkyFetcher::insertStatesToDb reads obj["states"] array and maps indices -> columns.
+    // flush to DB
     if (!lastMerged_.isEmpty()) {
-		// confirm on-tick refresh
         qInfo() << "[Tick] activeTiles=" << activeTiles_.size()
             << "lastMergedEmpty=" << lastMerged_.isEmpty();
-        
+
         fetcher_->insertStatesToDb(lastMerged_);
     }
+
+    // enforce DB == filter, then emit strictly from DB
+    if (filterEnabled_) {
+        purgeDbOutsideFilter();
+    }
+    emitFromDb();
 
     // we refresh stale/missing tiles (network only; no DB writes here)
     for (const TileKey& key : std::as_const(activeTiles_)) {
@@ -163,20 +248,6 @@ void LiveFlightsService::onTick()
 
 void LiveFlightsService::fetchTile(const TileKey& key) {
     auto [minLat, minLon, maxLat, maxLon] = tilemath::tileBBox(key.x, key.y, key.z);
-
-    // if a geo filter is enabled, shrink the request bbox to its intersection
-    // this prevents out-of-rect states from being returned and subsequently re-inserted
-    if (filterEnabled_) {
-        minLat = std::max(minLat, minLat_);
-        maxLat = std::min(maxLat, maxLat_);
-        minLon = std::max(minLon, minLon_);
-        maxLon = std::min(maxLon, maxLon_);
-
-        // no overlap => nothing to fetch.
-        if (minLat >= maxLat || minLon >= maxLon) {
-            return;
-        }
-    }
 
     fetcher_->fetchStatesBBox(
         minLat, minLon, maxLat, maxLon,
@@ -273,9 +344,7 @@ void LiveFlightsService::emitMerged()
     payload.insert("time", static_cast<qint64>(QDateTime::currentSecsSinceEpoch()));
     payload.insert("states", merged);
 
-    // we keep last merged snapshot for deterministic DB flush on master tick
     lastMerged_ = payload;
-    emit flightsMergedReady(payload);
 }
 
 void LiveFlightsService::pruneStale()

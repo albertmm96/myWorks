@@ -7,6 +7,9 @@
 #include <QJsonValue>
 #include <QSet>
 #include <QTimer>
+#include <QtSql/QSqlDatabase>
+#include <QtSql/QSqlQuery>
+#include <QtSql/QSqlError>
 
 class OpenSkyFetcher; // forward
 
@@ -40,6 +43,7 @@ public:
     // existing DB rows outside the rectangle to keep DB consistent with UI.
     void setGeoFilter(double minLat, double maxLat, double minLon, double maxLon);
     void clearGeoFilter();
+
     
     void onTick(); // called by Bridge master timer
 
@@ -75,4 +79,6 @@ private:
     void foldStatesIntoMerged(const QJsonObject& obj);
     void emitMerged();
     void pruneStale();
+    QJsonObject readStatesLiveFromDb() const;
+    void emitFromDb();
 };
