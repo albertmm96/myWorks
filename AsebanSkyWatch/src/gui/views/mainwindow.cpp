@@ -382,15 +382,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(bridge, &Bridge::error, this, [](const QString& m) { qWarning() << "[Bridge]" << m; });
     connect(liveSvc, &LiveFlightsService::serviceError, this, [](const QString& m) { qWarning() << "[Service]" << m; });
 
-    connect(bridge, &Bridge::flightsForTile, this, [](const QString& statesJson) {
-        const QJsonDocument doc = QJsonDocument::fromJson(statesJson.toUtf8());
-        if (!doc.isObject()) return;
-        const QJsonArray states = doc.object().value("states").toArray();
-
-        for (const auto& v : states) {
-            if (!v.isArray()) continue;
-            qInfo().noquote() << stateLine(v.toArray());
-        }
+    connect(bridge, &Bridge::flightsForTile, this, [](const QString& /*statesJson*/) {
+        // intentionally no logging here: printing full state payloads is too heavyB
         });
 
     // we load OpenLayers HTML. Base URL helps resolve relative URLs if we add assets.
