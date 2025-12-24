@@ -31,7 +31,7 @@ signals:
 private slots:
 
 private:
-    // loads clientId/clientSecret from credentials.json (once)
+    // loads clientId/clientSecret from openSkyCredentials.json (once)
     bool loadCredentials(QString* err = nullptr);
 
     // ensures we have a fresh access token; calls onReady() when available.
@@ -49,5 +49,5 @@ private:
     QString clientSecret_;
     QString accessToken_;
     QDateTime tokenExpiry_;       // UTC
-    QString credentialsPath_;     // defaults to appdir/credentials.json
+    QString credentialsPath_;     // defaults to appdir/openSkyCredentials.json
 };

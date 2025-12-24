@@ -25,10 +25,10 @@ add_executable(AsebanSkyWatch
  "src/gui/controllers/bridge.h" "src/gui/controllers/bridge.cpp" "src/utils/tile_math.h" "src/utils/tile_math.cpp" "src/backend/services/LiveFlightsService.h" "src/backend/services/LiveFlightsService.cpp"  "src/backend/fetch/openWeatherFetcher.h" "src/backend/fetch/openWeatherFetcher.cpp" "src/backend/services/LiveWeatherService.h" "src/backend/services/LiveWeatherService.cpp" "src/backend/models/aircraft_state.h" "src/backend/models/weather_grid.h")
 
  add_custom_command(TARGET AsebanSkyWatch POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E echo "Copying credentials.json to $<TARGET_FILE_DIR:AsebanSkyWatch>"
+  COMMAND ${CMAKE_COMMAND} -E echo "Copying openSkyCredentials.json to $<TARGET_FILE_DIR:AsebanSkyWatch>"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    "${CMAKE_SOURCE_DIR}/config/credentials.json"
-    "$<TARGET_FILE_DIR:AsebanSkyWatch>/credentials.json"
+    "${CMAKE_SOURCE_DIR}/config/openSkyCredentials.json"
+    "$<TARGET_FILE_DIR:AsebanSkyWatch>/openSkyCredentials.json"
 )
 
 # define the C++ standard if supported by the CMake version

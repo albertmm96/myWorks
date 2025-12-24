@@ -18,6 +18,7 @@
 #include <QtMath>      // for qRound
 #include <QToolTip>
 #include <QCursor>
+#include <QDebug>
 
 namespace {
 
@@ -347,10 +348,10 @@ MainWindow::MainWindow(QWidget* parent)
     qInfo() << "appDir =" << QCoreApplication::applicationDirPath();
 
     QStringList candidates = {
-        QCoreApplication::applicationDirPath() + "/credentials.json",                          // next to exe
-        QDir(QCoreApplication::applicationDirPath()).filePath("../../config/credentials.json"),
-        QDir(QCoreApplication::applicationDirPath()).filePath("../config/credentials.json"),
-        QDir::current().filePath("config/credentials.json")                                    // current working dir
+        QCoreApplication::applicationDirPath() + "/openSkyCredentials.json",                          // next to exe
+        QDir(QCoreApplication::applicationDirPath()).filePath("../../config/openSkyCredentials.json"),
+        QDir(QCoreApplication::applicationDirPath()).filePath("../config/openSkyCredentials.json"),
+        QDir::current().filePath("config/openSkyCredentials.json")                                    // current working dir
     };
     QString envPath = qEnvironmentVariable("OPENSKY_CREDENTIALS");
     if (!envPath.isEmpty()) candidates.prepend(envPath);
@@ -360,7 +361,7 @@ MainWindow::MainWindow(QWidget* parent)
         if (QFile::exists(p)) { chosen = p; break; }
     }
     if (chosen.isEmpty()) {
-        qWarning() << "credentials.json not found. Tried:" << candidates;
+        qWarning() << "openSkyCredentials.json not found. Tried:" << candidates;
     }
     else {
         qInfo() << "Using credentials at:" << chosen;

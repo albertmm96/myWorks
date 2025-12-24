@@ -27,9 +27,9 @@ OpenSkyFetcher::OpenSkyFetcher(QObject* parent) : QObject(parent) {
     dir.cdUp();
     dir.cdUp();
     dir.cdUp();
-	// we go into /config/credentials.json
+	// we go into /config/openSkyCredentials.json
     dir.cd("config");
-    credentialsPath_ = dir.absolutePath() + "/credentials.json";
+    credentialsPath_ = dir.absolutePath() + "/openSkyCredentials.json";
 }
 
 void OpenSkyFetcher::fetchStatesBBox(double minLat, double minLon, double maxLat, double maxLon, std::function<void(const QJsonObject&)> onOk, std::function<void(const QString&)> onErr)
@@ -268,7 +268,7 @@ bool OpenSkyFetcher::loadCredentials(QString* err)
     clientId_ = obj.value("clientId").toString();
     clientSecret_ = obj.value("clientSecret").toString();
     if (clientId_.isEmpty() || clientSecret_.isEmpty()) {
-        if (err) *err = "Missing clientId or clientSecret in credentials.json";
+        if (err) *err = "Missing clientId or clientSecret in openSkyCredentials.json";
         return false;
     }
     return true;
