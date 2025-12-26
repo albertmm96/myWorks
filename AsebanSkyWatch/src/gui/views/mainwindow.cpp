@@ -106,6 +106,29 @@ namespace {
         return kv.join(" | ");
     }
 
+    static QString readApiKeyFromJsonFile(const QString& path)
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) {
+            qWarning() << "[Weather] Cannot open credentials file:" << path;
+            return {};
+        }
+
+        QJsonParseError pe{};
+        const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
+        if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
+            qWarning() << "[Weather] Bad JSON in" << path << ":" << pe.errorString();
+            return {};
+        }
+
+        const QString key = doc.object().value("apiKey").toString().trimmed();
+        if (key.isEmpty()) {
+            qWarning() << "[Weather] Missing/empty \"apiKey\" in" << path;
+        }
+        return key;
+    }
+
+
 } // namespace
 
 
@@ -371,13 +394,41 @@ MainWindow::MainWindow(QWidget* parent)
     auto* liveSvc = new LiveFlightsService(fetcher, this);
     bridge->setService(liveSvc);
 
+
+    
     auto* weatherFetcher = new OpenWeatherFetcher(this);
-    // API key from env var
-    weatherFetcher->setApiKey(
-        QStringLiteral("df0584ec5ee163e72f6129312772ccdb") // dev only, later change to credentials folder
-    );
+
+    QStringList weatherCandidates = {
+        QCoreApplication::applicationDirPath() + "/openWeatherCredentials.json",                          // next to exe
+        QDir(QCoreApplication::applicationDirPath()).filePath("../../config/openWeatherCredentials.json"),
+        QDir(QCoreApplication::applicationDirPath()).filePath("../config/openWeatherCredentials.json"),
+        QDir::current().filePath("config/openWeatherCredentials.json")                                    // current working dir
+    };
+
+    QString weatherEnvPath = qEnvironmentVariable("OPENWEATHER_CREDENTIALS");
+    if (!weatherEnvPath.isEmpty()) weatherCandidates.prepend(weatherEnvPath);
+
+    QString weatherChosen;
+    for (const QString& p : weatherCandidates) {
+        if (QFile::exists(p)) { weatherChosen = p; break; }
+    }
+
+    if (weatherChosen.isEmpty()) {
+        qWarning() << "[Weather] openWeatherCredentials.json not found. Tried:" << weatherCandidates;
+    }
+    else {
+        qInfo() << "[Weather] Using credentials at:" << weatherChosen;
+        const QString apiKey = readApiKeyFromJsonFile(weatherChosen);
+        if (!apiKey.isEmpty()) {
+            weatherFetcher->setApiKey(apiKey);
+        }
+    }
+
     auto* weatherSvc = new LiveWeatherService(weatherFetcher, this);
     bridge->setWeatherService(weatherSvc);
+
+
+
 
     // log service/bridge errors
     connect(bridge, &Bridge::error, this, [](const QString& m) { qWarning() << "[Bridge]" << m; });
