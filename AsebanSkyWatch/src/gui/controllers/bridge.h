@@ -31,6 +31,7 @@ private slots:
 signals:
     void flightsForTile(const QString& statesJson);
     void weatherForTile(const QString& weatherJson);
+    void weatherSamplesForTile(const QString& samplesJson);
     void error(const QString& message);
 
 private:

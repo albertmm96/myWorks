@@ -2,6 +2,7 @@
 #include "bridge.h"
 #include "LiveFlightsService.h"
 #include "LiveWeatherService.h"
+#include "tile_math.h"
 
 #include <QDebug>
 #include <QJsonObject>
@@ -57,6 +58,16 @@ void Bridge::setWeatherService(LiveWeatherService* s)
             emit weatherForTile(json);
         });
 
+    connect(weatherService_, &LiveWeatherService::weatherSamplesReady,
+        this, [this](const QJsonArray& arr) {
+
+            const QString json = QString::fromUtf8(
+                QJsonDocument(arr).toJson(QJsonDocument::Compact));
+
+            emit weatherSamplesForTile(json);
+        });
+
+
     connect(weatherService_, &LiveWeatherService::serviceError,
         this, &Bridge::error);
 
@@ -104,8 +115,42 @@ void Bridge::requestTileAt(double lat, double lon, int z)
 
     service_->requestTile(lat, lon, z);
 
-    // we update weather for the clicked point
-    requestWeatherAt(lat, lon);
+    // we sample multiple points across the clicked tile and fetch weather at each point
+    if (!weatherService_) {
+        emit error("LiveWeatherService not set");
+        return;
+    }
+
+    const auto [tx, ty] = tilemath::lonLatToTile(lat, lon, z);
+    const auto [minLat, minLon, maxLat, maxLon] = tilemath::tileBBox(tx, ty, z);
+
+    // sampling density (tune). 4x4 = 16 calls (+ optional clicked point)
+    const int N = 4;
+
+    // keep samples away from exact edges so adjacent tiles don't duplicate too hard
+    const double marginFrac = 0.12;
+
+    const double lat0 = minLat + (maxLat - minLat) * marginFrac;
+    const double lat1 = maxLat - (maxLat - minLat) * marginFrac;
+    const double lon0 = minLon + (maxLon - minLon) * marginFrac;
+    const double lon1 = maxLon - (maxLon - minLon) * marginFrac;
+
+    QVector<QPair<double, double>> pts;
+    pts.reserve(N * N + 1);
+
+    for (int iy = 0; iy < N; ++iy) {
+        const double tY = (N == 1) ? 0.5 : double(iy) / double(N - 1);
+        const double sLat = lat0 + (lat1 - lat0) * tY;
+
+        for (int ix = 0; ix < N; ++ix) {
+            const double tX = (N == 1) ? 0.5 : double(ix) / double(N - 1);
+            const double sLon = lon0 + (lon1 - lon0) * tX;
+
+            pts.push_back({ sLat, sLon });
+        }
+    }
+
+    weatherService_->requestWeatherSamples(pts);
 }
 
 void Bridge::onMasterTick() {

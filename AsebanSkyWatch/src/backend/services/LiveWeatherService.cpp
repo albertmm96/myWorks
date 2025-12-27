@@ -13,6 +13,21 @@ LiveWeatherService::LiveWeatherService(OpenWeatherFetcher* fetcher, QObject* par
     : QObject(parent), fetcher_(fetcher) {
 
     connect(fetcher_, &OpenWeatherFetcher::weatherReady, this, [this](const QJsonObject& obj) {
+
+        // if we're sampling, upsert each sample immediately + accumulate markers
+        if (samplingActive_) {
+            upsertWeatherObject_(obj, currentSampleLat_, currentSampleLon_);
+
+            QJsonObject pt;
+            pt["lat"] = currentSampleLat_;
+            pt["lon"] = currentSampleLon_;
+            completedSamples_.append(pt);
+
+            fetchNextSample_();
+            return;
+        }
+
+        // normal single-point behavior (existing)
         cache_ = obj;
         cacheTs_ = QDateTime::currentDateTimeUtc();
         emit weatherReady(obj); // forward to Bridge/UI
@@ -36,11 +51,6 @@ void LiveWeatherService::onTick()
     if (cache_.isEmpty())
         return;
 
-    auto sqlQuoted = [](QString s) -> QString {
-        s.replace('\'', "''");
-        return "'" + s + "'";
-        };
-
     // lat/lon: prefer response coord, otherwise anchor
     double lat = anchorLat_;
     double lon = anchorLon_;
@@ -50,6 +60,46 @@ void LiveWeatherService::onTick()
         if (coord.contains("lon")) lon = coord["lon"].toDouble(lon);
     }
 
+    // we reuse the unified upsert code path
+    upsertWeatherObject_(cache_, lat, lon);
+}
+
+void LiveWeatherService::requestWeatherSamples(const QVector<QPair<double, double>>& points)
+{
+    if (!fetcher_ || points.isEmpty())
+        return;
+
+    samplingActive_ = true;
+    pendingSamples_ = points;
+    completedSamples_ = QJsonArray();
+
+    fetchNextSample_();
+}
+
+void LiveWeatherService::fetchNextSample_()
+{
+    if (pendingSamples_.isEmpty()) {
+        samplingActive_ = false;
+        emit weatherSamplesReady(completedSamples_);
+        return;
+    }
+
+    const auto p = pendingSamples_.front();
+    pendingSamples_.pop_front();
+
+    currentSampleLat_ = p.first;
+    currentSampleLon_ = p.second;
+
+    fetcher_->fetchCurrentWeather(currentSampleLat_, currentSampleLon_);
+}
+
+void LiveWeatherService::upsertWeatherObject_(const QJsonObject& obj, double lat, double lon)
+{
+    auto sqlQuoted = [](QString s) -> QString {
+        s.replace('\'', "''");
+        return "'" + s + "'";
+        };
+
     const qint64 fetchedAt = QDateTime::currentSecsSinceEpoch();
 
     // Parse fields
@@ -57,27 +107,27 @@ void LiveWeatherService::onTick()
     int humidity = -1, pressure = -1, windDeg = -1, clouds = -1;
     QString weatherMain, weatherDesc, city;
 
-    if (cache_.contains("main") && cache_["main"].isObject()) {
-        const QJsonObject m = cache_["main"].toObject();
+    if (obj.contains("main") && obj["main"].isObject()) {
+        const QJsonObject m = obj["main"].toObject();
         if (m.contains("temp"))       tempC = m.value("temp").toDouble(tempC);
         if (m.contains("feels_like")) feelsC = m.value("feels_like").toDouble(feelsC);
         if (m.contains("humidity"))   humidity = m.value("humidity").toInt(humidity);
         if (m.contains("pressure"))   pressure = m.value("pressure").toInt(pressure);
     }
 
-    if (cache_.contains("wind") && cache_["wind"].isObject()) {
-        const QJsonObject w = cache_["wind"].toObject();
+    if (obj.contains("wind") && obj["wind"].isObject()) {
+        const QJsonObject w = obj["wind"].toObject();
         if (w.contains("speed")) windSpeed = w.value("speed").toDouble(windSpeed);
         if (w.contains("deg"))   windDeg = w.value("deg").toInt(windDeg);
     }
 
-    if (cache_.contains("clouds") && cache_["clouds"].isObject()) {
-        const QJsonObject c = cache_["clouds"].toObject();
+    if (obj.contains("clouds") && obj["clouds"].isObject()) {
+        const QJsonObject c = obj["clouds"].toObject();
         if (c.contains("all")) clouds = c.value("all").toInt(clouds);
     }
 
-    if (cache_.contains("weather") && cache_["weather"].isArray()) {
-        const QJsonArray arr = cache_["weather"].toArray();
+    if (obj.contains("weather") && obj["weather"].isArray()) {
+        const QJsonArray arr = obj["weather"].toArray();
         if (!arr.isEmpty() && arr.at(0).isObject()) {
             const QJsonObject w0 = arr.at(0).toObject();
             weatherMain = w0.value("main").toString();
@@ -85,7 +135,7 @@ void LiveWeatherService::onTick()
         }
     }
 
-    city = cache_.value("name").toString();
+    city = obj.value("name").toString();
 
     QSqlDatabase db = QSqlDatabase::database("pg_weather");
     if (!db.isOpen()) {
@@ -93,7 +143,6 @@ void LiveWeatherService::onTick()
         return;
     }
 
-    // we convert values to SQL literals (NULL where missing)
     auto sqlNumOrNull = [](double v) -> QString {
         return std::isnan(v) ? "NULL" : QString::number(v, 'f', 6);
         };
@@ -146,6 +195,5 @@ void LiveWeatherService::onTick()
     QSqlQuery q(db);
     if (!q.exec(sql)) {
         emit serviceError(QString("weather upsert failed: %1").arg(q.lastError().text()));
-        return;
     }
 }

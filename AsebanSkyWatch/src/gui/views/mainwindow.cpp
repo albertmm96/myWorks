@@ -224,6 +224,25 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       }
     });
     map.addLayer(liveLayer);
+    
+    // Weather sample circles (tile sampling)
+    const weatherSampleSource = new ol.source.Vector();
+
+    const weatherSampleStyle = new ol.style.Style({
+      image: new ol.style.Circle({
+        radius: 3,
+        fill: new ol.style.Fill({ color: 'rgba(80, 180, 255, 0.25)' }),  // clear blue
+        stroke: new ol.style.Stroke({ color: 'rgba(80, 180, 255, 0.95)', width: 1 })
+      })
+    });
+
+    const weatherSampleLayer = new ol.layer.Vector({
+      source: weatherSampleSource,
+      style: weatherSampleStyle
+    });
+
+    map.addLayer(weatherSampleLayer);
+
 
     window.qtAddLivePoint = function(lon, lat) {
       const feature = new ol.Feature({
@@ -281,6 +300,23 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       bridge.weatherForTile.connect(function(weatherJson) {
         const payload = (typeof weatherJson === "string") ? JSON.parse(weatherJson) : weatherJson;
         console.log("[WEATHER]", payload);
+      });
+      
+      // C++ -> receive sampled points for the clicked tile, draw circles
+      bridge.weatherSamplesForTile.connect(function(samplesJson) {
+        const arr = (typeof samplesJson === "string") ? JSON.parse(samplesJson) : samplesJson;
+
+        weatherSampleSource.clear();
+
+        const feats = [];
+        for (const p of arr) {
+          const lat = p.lat, lon = p.lon;
+          if (lat == null || lon == null) continue;
+          feats.push(new ol.Feature({
+            geometry: new ol.geom.Point(ol.proj.fromLonLat([lon, lat]))
+          }));
+        }
+        weatherSampleSource.addFeatures(feats);
       });
 
     });
