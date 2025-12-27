@@ -458,6 +458,11 @@ MainWindow::MainWindow(QWidget* parent)
         ui->stackedWidget->setCurrentWidget(ui->pageFilterFlights);
         updateSliderRangesFromDb();
         });
+    connect(ui->actionFilter_Weather, &QAction::triggered, this, [=] {
+        leftStack->setCurrentWidget(ui->scrollArea);
+        ui->stackedWidget->setCurrentWidget(ui->pageFilterWeather);
+        updateSliderRangesFromDb();
+        });
     connect(ui->actionFilter_Weather, &QAction::triggered, this, &MainWindow::onFilterWeather);
     connect(ui->actionFlight_Analytics, &QAction::triggered, this, &MainWindow::onAnalyseFlights);
 	connect(ui->actionView_Tool, &QAction::triggered, this, &MainWindow::onViewTool);

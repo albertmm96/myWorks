@@ -17,9 +17,9 @@
    <widget class="QTableView" name="tableView">
     <property name="geometry">
      <rect>
-      <x>140</x>
+      <x>250</x>
       <y>10</y>
-      <width>501</width>
+      <width>391</width>
       <height>211</height>
      </rect>
     </property>
@@ -29,7 +29,7 @@
      <rect>
       <x>10</x>
       <y>10</y>
-      <width>121</width>
+      <width>231</width>
       <height>211</height>
      </rect>
     </property>
@@ -41,7 +41,7 @@
       <rect>
        <x>0</x>
        <y>0</y>
-       <width>119</width>
+       <width>229</width>
        <height>209</height>
       </rect>
      </property>
@@ -50,12 +50,12 @@
        <rect>
         <x>0</x>
         <y>0</y>
-        <width>121</width>
+        <width>231</width>
         <height>211</height>
        </rect>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="pageFilterFlights">
        <property name="layoutDirection">
@@ -66,11 +66,18 @@
          <rect>
           <x>10</x>
           <y>20</y>
-          <width>101</width>
+          <width>211</width>
           <height>181</height>
          </rect>
         </property>
-        <layout class="QVBoxLayout" name="verticalLayout">
+        <layout class="QVBoxLayout" name="verticalLayoutFlights">
+         <item>
+          <widget class="QCheckBox" name="ShowFlightsCheckBox">
+           <property name="text">
+            <string>Show flights</string>
+           </property>
+          </widget>
+         </item>
          <item>
           <widget class="QLabel" name="labelLat">
            <property name="font">
@@ -124,7 +131,77 @@
         </layout>
        </widget>
       </widget>
-      <widget class="QWidget" name="page_2"/>
+      <widget class="QWidget" name="pageFilterWeather">
+       <widget class="QWidget" name="verticalLayoutWidget_2">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>20</y>
+          <width>211</width>
+          <height>181</height>
+         </rect>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayoutWeather">
+         <item>
+          <widget class="QCheckBox" name="ShowWeatherCheckBox">
+           <property name="text">
+            <string>Show weather</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelTemp">
+           <property name="font">
+            <font>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Temperature filter</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSlider" name="latitudeSlider_2">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="tracking">
+            <bool>true</bool>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelPressure">
+           <property name="font">
+            <font>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="text">
+            <string>Pressure filter</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSlider" name="longitudeSlider_2">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="tracking">
+            <bool>true</bool>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
      </widget>
     </widget>
    </widget>

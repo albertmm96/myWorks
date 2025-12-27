@@ -14,7 +14,7 @@ namespace Ui {
     class MainWindow;
 }
 
-class Bridge;   // <  MUST be here
+class Bridge;
 
 class MainWindow : public QMainWindow
 {
