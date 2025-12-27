@@ -101,34 +101,34 @@ void Bridge::requestWeatherAt(double lat, double lon)
 
 void Bridge::requestTileAt(double lat, double lon, int z)
 {
-    if (!service_) {
-        emit error("LiveFlightsService not set");
-        return;
-    }
-
-    // on each click, we reset any backend geo filter so DB can repopulate freely
-    filterEnabled_ = false;
-
+    // =========================
+    // 1) FLIGHTS
+    // =========================
     if (service_) {
-        service_->clearGeoFilter();
+        service_->requestTile(lat, lon, z);
     }
 
-    service_->requestTile(lat, lon, z);
-
-    // we sample multiple points across the clicked tile and fetch weather at each point
+    // =========================
+    // 2) WEATHER – TILE SAMPLING
+    // =========================
     if (!weatherService_) {
         emit error("LiveWeatherService not set");
         return;
     }
 
+    // compute tile indices from clicked point
     const auto [tx, ty] = tilemath::lonLatToTile(lat, lon, z);
-    const auto [minLat, minLon, maxLat, maxLon] = tilemath::tileBBox(tx, ty, z);
 
-    // sampling density (tune). 4x4 = 16 calls (+ optional clicked point)
-    const int N = 4;
+    // stable tile identity (used for replacement + styling)
+    const QString tileKey = QString("%1/%2/%3").arg(z).arg(tx).arg(ty);
 
-    // keep samples away from exact edges so adjacent tiles don't duplicate too hard
-    const double marginFrac = 0.12;
+    // tile bounding box
+    const auto [minLat, minLon, maxLat, maxLon] =
+        tilemath::tileBBox(tx, ty, z);
+
+    // sampling resolution
+    const int N = 4;               // 4x4 grid
+    const double marginFrac = 0.12; // avoid edges
 
     const double lat0 = minLat + (maxLat - minLat) * marginFrac;
     const double lat1 = maxLat - (maxLat - minLat) * marginFrac;
@@ -138,19 +138,28 @@ void Bridge::requestTileAt(double lat, double lon, int z)
     QVector<QPair<double, double>> pts;
     pts.reserve(N * N + 1);
 
+    // include clicked point (anchor sample)
+    pts.push_back({ lat, lon });
+
+    // regular grid sampling across the tile
     for (int iy = 0; iy < N; ++iy) {
-        const double tY = (N == 1) ? 0.5 : double(iy) / double(N - 1);
+        const double tY = (N == 1)
+            ? 0.5
+            : static_cast<double>(iy) / static_cast<double>(N - 1);
         const double sLat = lat0 + (lat1 - lat0) * tY;
 
         for (int ix = 0; ix < N; ++ix) {
-            const double tX = (N == 1) ? 0.5 : double(ix) / double(N - 1);
+            const double tX = (N == 1)
+                ? 0.5
+                : static_cast<double>(ix) / static_cast<double>(N - 1);
             const double sLon = lon0 + (lon1 - lon0) * tX;
 
             pts.push_back({ sLat, sLon });
         }
     }
 
-    weatherService_->requestWeatherSamples(pts);
+    // trigger multi-point weather sampling for this tile
+    weatherService_->requestWeatherSamples(tileKey, pts);
 }
 
 void Bridge::onMasterTick() {

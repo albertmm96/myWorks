@@ -5,6 +5,7 @@
 #include <QVector>
 #include <QPair>
 #include <QJsonArray>
+#include <QHash>
 
 class OpenWeatherFetcher;
 
@@ -15,7 +16,8 @@ public:
 
     void requestWeather(double lat, double lon);
     void onTick(); // called by Bridge master timer
-    void requestWeatherSamples(const QVector<QPair<double, double>>& points);
+    void requestWeatherSamples(const QString& tileKey,
+        const QVector<QPair<double, double>>& points);
 
 signals:
     void weatherReady(const QJsonObject& obj);
@@ -41,6 +43,19 @@ private:
     double currentSampleLat_ = 0.0;
     double currentSampleLon_ = 0.0;
 
+    QString currentTileKey_;
+
     void fetchNextSample_();
     void upsertWeatherObject_(const QJsonObject& obj, double lat, double lon);
+    // active tile sampling registry, so we can refresh periodically
+    QHash<QString, QVector<QPair<double, double>>> activeTileSamples_;
+    QHash<QString, QDateTime> tileLastFetchUtc_;
+    // refresh control
+    int tileRefreshSeconds_ = 60;
+    // when refreshing, we cycle tiles so we don't spam API
+    QStringList refreshTileKeys_;
+    int refreshTileIndex_ = 0;
+
+    void refreshOneTileIfStale_();
+    bool tileIsStale_(const QString& tileKey) const;
 };

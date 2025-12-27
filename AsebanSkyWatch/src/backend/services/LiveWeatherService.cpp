@@ -21,6 +21,7 @@ LiveWeatherService::LiveWeatherService(OpenWeatherFetcher* fetcher, QObject* par
             QJsonObject pt;
             pt["lat"] = currentSampleLat_;
             pt["lon"] = currentSampleLon_;
+            pt["tileKey"] = currentTileKey_;   // we will set this in requestWeatherSamples
             completedSamples_.append(pt);
 
             fetchNextSample_();
@@ -48,27 +49,36 @@ void LiveWeatherService::requestWeather(double lat, double lon) {
 
 void LiveWeatherService::onTick()
 {
-    if (cache_.isEmpty())
-        return;
-
-    // lat/lon: prefer response coord, otherwise anchor
-    double lat = anchorLat_;
-    double lon = anchorLon_;
-    if (cache_.contains("coord") && cache_["coord"].isObject()) {
-        const QJsonObject coord = cache_["coord"].toObject();
-        if (coord.contains("lat")) lat = coord["lat"].toDouble(lat);
-        if (coord.contains("lon")) lon = coord["lon"].toDouble(lon);
+    if (!cache_.isEmpty()) {
+        double lat = anchorLat_;
+        double lon = anchorLon_;
+        if (cache_.contains("coord") && cache_["coord"].isObject()) {
+            const QJsonObject coord = cache_["coord"].toObject();
+            if (coord.contains("lat")) lat = coord["lat"].toDouble(lat);
+            if (coord.contains("lon")) lon = coord["lon"].toDouble(lon);
+        }
+        upsertWeatherObject_(cache_, lat, lon);
     }
 
-    // we reuse the unified upsert code path
-    upsertWeatherObject_(cache_, lat, lon);
+    // refresh tile samples periodically (one tile per tick to avoid API bursts)
+    refreshOneTileIfStale_();
 }
 
-void LiveWeatherService::requestWeatherSamples(const QVector<QPair<double, double>>& points)
+void LiveWeatherService::requestWeatherSamples(const QString& tileKey,
+    const QVector<QPair<double, double>>& points)
 {
+    activeTileSamples_[tileKey] = points;
+    if (!tileLastFetchUtc_.contains(tileKey))
+        tileLastFetchUtc_[tileKey] = QDateTime(); // invalid = stale
+
+    // keep a stable list for round-robin refresh
+    refreshTileKeys_ = activeTileSamples_.keys();
+
+
     if (!fetcher_ || points.isEmpty())
         return;
 
+    currentTileKey_ = tileKey;
     samplingActive_ = true;
     pendingSamples_ = points;
     completedSamples_ = QJsonArray();
@@ -80,6 +90,7 @@ void LiveWeatherService::fetchNextSample_()
 {
     if (pendingSamples_.isEmpty()) {
         samplingActive_ = false;
+        tileLastFetchUtc_[currentTileKey_] = QDateTime::currentDateTimeUtc();
         emit weatherSamplesReady(completedSamples_);
         return;
     }
@@ -196,4 +207,49 @@ void LiveWeatherService::upsertWeatherObject_(const QJsonObject& obj, double lat
     if (!q.exec(sql)) {
         emit serviceError(QString("weather upsert failed: %1").arg(q.lastError().text()));
     }
+}
+
+bool LiveWeatherService::tileIsStale_(const QString& tileKey) const
+{
+    const QDateTime last = tileLastFetchUtc_.value(tileKey);
+    if (!last.isValid())
+        return true;
+
+    const int age = last.secsTo(QDateTime::currentDateTimeUtc());
+    return age >= tileRefreshSeconds_;
+}
+
+void LiveWeatherService::refreshOneTileIfStale_()
+{
+    // don't refresh while a sampling batch is already running
+    if (samplingActive_)
+        return;
+
+    if (activeTileSamples_.isEmpty())
+        return;
+
+    // if keys list got out of sync, rebuild
+    if (refreshTileKeys_.size() != activeTileSamples_.size()) {
+        refreshTileKeys_ = activeTileSamples_.keys();
+        refreshTileIndex_ = 0;
+    }
+    if (refreshTileKeys_.isEmpty())
+        return;
+
+    // round-robin pick
+    if (refreshTileIndex_ >= refreshTileKeys_.size())
+        refreshTileIndex_ = 0;
+
+    const QString tileKey = refreshTileKeys_.at(refreshTileIndex_++);
+    if (!activeTileSamples_.contains(tileKey))
+        return;
+
+    if (!tileIsStale_(tileKey))
+        return;
+
+    // trigger a refresh fetch for that tile (same requestWeatherSamples path)
+    const auto points = activeTileSamples_.value(tileKey);
+
+    // this will upsert all points and then update tileLastFetchUtc_
+    requestWeatherSamples(tileKey, points);
 }

@@ -228,17 +228,36 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
     // Weather sample circles (tile sampling)
     const weatherSampleSource = new ol.source.Vector();
 
-    const weatherSampleStyle = new ol.style.Style({
-      image: new ol.style.Circle({
-        radius: 3,
-        fill: new ol.style.Fill({ color: 'rgba(80, 180, 255, 0.25)' }),  // clear blue
-        stroke: new ol.style.Stroke({ color: 'rgba(80, 180, 255, 0.95)', width: 1 })
-      })
-    });
-
+    function makeWeatherSampleStyle(radiusPx) {
+      return new ol.style.Style({
+        image: new ol.style.Circle({
+          radius: radiusPx,
+          fill: new ol.style.Fill({ color: 'rgba(80, 180, 255, 0.25)' }),
+          stroke: new ol.style.Stroke({ color: 'rgba(80, 180, 255, 0.95)', width: 1 })
+        })
+      });
+    }
+    
+    // cache styles per integer radius to avoid recreating every render
+    const weatherStyleCache = new Map();
+    
     const weatherSampleLayer = new ol.layer.Vector({
       source: weatherSampleSource,
-      style: weatherSampleStyle
+      style: function(feature, resolution) {
+        // Convert resolution to an approximate zoom level
+        const zoom = map.getView().getZoom();
+        const radius = 3; // constant pixel radius
+    
+        if (!weatherStyleCache.has(radius)) {
+          weatherStyleCache.set(radius, makeWeatherSampleStyle(radius));
+        }
+        return weatherStyleCache.get(radius);
+      }
+    });
+    map.addLayer(weatherSampleLayer);
+    
+    map.getView().on('change:resolution', function() {
+        weatherSampleLayer.changed();
     });
 
     map.addLayer(weatherSampleLayer);
@@ -302,22 +321,43 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
         console.log("[WEATHER]", payload);
       });
       
-      // C++ -> receive sampled points for the clicked tile, draw circles
+
+      // tileKey -> array of features currently displayed for that tile
+      const weatherTileFeatures = new Map();
+      
       bridge.weatherSamplesForTile.connect(function(samplesJson) {
         const arr = (typeof samplesJson === "string") ? JSON.parse(samplesJson) : samplesJson;
-
-        weatherSampleSource.clear();
-
+        if (!arr.length) return;
+      
+        const tileKey = arr[0].tileKey;
+        if (!tileKey) return;
+      
+        // Remove only the old features for THIS tile
+        const old = weatherTileFeatures.get(tileKey);
+        if (old && old.length) {
+          for (const f of old) weatherSampleSource.removeFeature(f);
+        }
+      
+        // Add the new features for THIS tile
         const feats = [];
         for (const p of arr) {
           const lat = p.lat, lon = p.lon;
           if (lat == null || lon == null) continue;
-          feats.push(new ol.Feature({
+      
+          const f = new ol.Feature({
             geometry: new ol.geom.Point(ol.proj.fromLonLat([lon, lat]))
-          }));
+          });
+      
+          // keep tileKey on feature (optional)
+          f.set("tileKey", tileKey);
+      
+          feats.push(f);
         }
+      
         weatherSampleSource.addFeatures(feats);
+        weatherTileFeatures.set(tileKey, feats);
       });
+
 
     });
   </script>
