@@ -254,6 +254,109 @@ void OpenSkyFetcher::insertStatesToDb(const QJsonObject& obj)
     }
 }
 
+void OpenSkyFetcher::fetchFlightsAircraft(
+    const QString& icao24, qint64 begin, qint64 end,
+    std::function<void(const QJsonArray&)> onOk,
+    std::function<void(const QString&)> onErr)
+{
+    ensureAccessToken(
+        [=]() {
+            QUrl url("https://opensky-network.org/api/flights/aircraft");
+            QUrlQuery q;
+            q.addQueryItem("icao24", icao24);
+            q.addQueryItem("begin", QString::number(begin));
+            q.addQueryItem("end", QString::number(end));
+            url.setQuery(q);
+
+            QNetworkRequest req(url);
+            req.setHeader(QNetworkRequest::UserAgentHeader, "AsebanSkyWatch/1.0");
+            req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+            req.setRawHeader("Authorization", "Bearer " + accessToken_.toUtf8());
+
+            QNetworkReply* reply = manager.get(req);
+
+            QObject::connect(reply, &QNetworkReply::finished, reply, [reply, onOk, onErr]() {
+                const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                const QByteArray ctype = reply->header(QNetworkRequest::ContentTypeHeader).toByteArray();
+                const QByteArray bytes = reply->readAll();
+                reply->deleteLater();
+
+                if (reply->error() != QNetworkReply::NoError) {
+                    onErr(QString("flights/aircraft error (%1): %2").arg(status).arg(reply->errorString()));
+                    return;
+                }
+                if (status != 200 || !ctype.startsWith("application/json")) {
+                    onErr(QString("flights/aircraft HTTP %1 ctype=%2 body(head)=%3")
+                        .arg(status)
+                        .arg(QString::fromLatin1(ctype))
+                        .arg(QString::fromLatin1(bytes.left(200))));
+                    return;
+                }
+
+                const QJsonDocument doc = QJsonDocument::fromJson(bytes);
+                if (!doc.isArray()) {
+                    onErr("flights/aircraft returned non-array JSON");
+                    return;
+                }
+
+                onOk(doc.array());
+                });
+        },
+        onErr
+    );
+}
+
+void OpenSkyFetcher::fetchTrackAll(
+    const QString& icao24, qint64 time,
+    std::function<void(const QJsonObject&)> onOk,
+    std::function<void(const QString&)> onErr)
+{
+    ensureAccessToken(
+        [=]() {
+            QUrl url("https://opensky-network.org/api/tracks/all");
+            QUrlQuery q;
+            q.addQueryItem("icao24", icao24);
+            q.addQueryItem("time", QString::number(time));
+            url.setQuery(q);
+
+            QNetworkRequest req(url);
+            req.setHeader(QNetworkRequest::UserAgentHeader, "AsebanSkyWatch/1.0");
+            req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+            req.setRawHeader("Authorization", "Bearer " + accessToken_.toUtf8());
+
+            QNetworkReply* reply = manager.get(req);
+
+            QObject::connect(reply, &QNetworkReply::finished, reply, [reply, onOk, onErr]() {
+                const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+                const QByteArray ctype = reply->header(QNetworkRequest::ContentTypeHeader).toByteArray();
+                const QByteArray bytes = reply->readAll();
+                reply->deleteLater();
+
+                if (reply->error() != QNetworkReply::NoError) {
+                    onErr(QString("tracks/all error (%1): %2").arg(status).arg(reply->errorString()));
+                    return;
+                }
+                if (status != 200 || !ctype.startsWith("application/json")) {
+                    onErr(QString("tracks/all HTTP %1 ctype=%2 body(head)=%3")
+                        .arg(status)
+                        .arg(QString::fromLatin1(ctype))
+                        .arg(QString::fromLatin1(bytes.left(200))));
+                    return;
+                }
+
+                const QJsonDocument doc = QJsonDocument::fromJson(bytes);
+                if (!doc.isObject()) {
+                    onErr("tracks/all returned non-object JSON");
+                    return;
+                }
+
+                onOk(doc.object());
+                });
+        },
+        onErr
+    );
+}
+
 bool OpenSkyFetcher::loadCredentials(QString* err)
 {
     if (!clientId_.isEmpty() && !clientSecret_.isEmpty()) return true;

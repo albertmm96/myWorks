@@ -163,6 +163,25 @@ int main(int argc, char* argv[])
         "ADD COLUMN IF NOT EXISTS city_name TEXT;"
     );
 
+    runQuery(query,
+        "CREATE TABLE IF NOT EXISTS flight_track_live ("
+        "  ts TIMESTAMPTZ NOT NULL,"
+        "  icao24 TEXT NOT NULL,"
+        "  longitude DOUBLE PRECISION,"
+        "  latitude DOUBLE PRECISION,"
+        "  source TEXT,"
+        "  PRIMARY KEY (icao24, ts)"
+        ");"
+    );
+
+    runQuery(query,
+        "SELECT create_hypertable('flight_track_live', 'ts', if_not_exists => TRUE);"
+    );
+
+    runQuery(query,
+        "CREATE INDEX IF NOT EXISTS flight_track_live_icao_ts_idx "
+        "ON flight_track_live (icao24, ts DESC);"
+    );
 
     // GUI
     MainWindow w;

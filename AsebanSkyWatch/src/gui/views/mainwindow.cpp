@@ -225,6 +225,42 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
     });
     map.addLayer(liveLayer);
     
+
+
+    // =========================
+    // Selected flight track line
+    // =========================
+    const trackSource = new ol.source.Vector();
+    
+    const trackLayer = new ol.layer.Vector({
+      source: trackSource,
+      style: new ol.style.Style({
+        stroke: new ol.style.Stroke({
+          color: 'rgba(255, 0, 0, 0.90)',
+          width: 6
+        })
+      })
+    });
+    map.addLayer(trackLayer);
+    
+    function renderTrackLine(pointsLonLat) {
+      trackSource.clear();
+      if (!pointsLonLat || pointsLonLat.length < 2) return;
+    
+      const coords3857 = pointsLonLat.map(p => ol.proj.fromLonLat([p.lon, p.lat]));
+      const feat = new ol.Feature({
+        geometry: new ol.geom.LineString(coords3857)
+      });
+      trackSource.addFeature(feat);
+    }
+    
+    function clearTrackLine() {
+      trackSource.clear();
+    }
+
+
+
+
     // Weather sample circles (tile sampling)
     const weatherSampleSource = new ol.source.Vector();
 
@@ -302,18 +338,60 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
         bridge.mouseMoved(lat, lon);
       });
   
-      // CLICK -> ask C++ for flights in the tile
+
+
+
       map.on('singleclick', (evt) => {
+        // if user clicked a flight icon, select it (and do NOT request tiles)
+        let pickedIcao = null;
+      
+        map.forEachFeatureAtPixel(evt.pixel, (feature, layer) => {
+          const icao = feature.get('icao24');
+          if (icao) {
+            pickedIcao = icao;
+            return true; // stop iteration
+          }
+          return false;
+        });
+      
         const [lon, lat] = ol.proj.toLonLat(evt.coordinate, 'EPSG:3857');
+      
+        if (pickedIcao) {
+          clearTrackLine();                 // immediate visual feedback
+          bridge.selectFlight(pickedIcao);  // C++ will fetch+emit track
+          return;
+        }
+      
+        // OTHERWISE: behave as before, request flights for the clicked tile
         const z = Math.round(map.getView().getZoom());
         bridge.requestTileAt(lat, lon, z);
       });
+
+
+
+
+
   
       // C++ -> receive and draw
       bridge.flightsForTile.connect(function(statesJson) {
         const payload = (typeof statesJson === "string") ? JSON.parse(statesJson) : statesJson;
         renderFlights(payload.states || payload);
       });
+
+
+
+
+      bridge.trackLineReady.connect(function(trackJson) {
+        const arr = (typeof trackJson === "string") ? JSON.parse(trackJson) : trackJson;
+        renderTrackLine(arr);
+      });
+      
+      bridge.trackCleared.connect(function() {
+        clearTrackLine();
+      });
+
+
+
 
       // C++ -> receive weather for the clicked location
       bridge.weatherForTile.connect(function(weatherJson) {

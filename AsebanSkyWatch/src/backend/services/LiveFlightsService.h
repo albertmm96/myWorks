@@ -10,6 +10,7 @@
 #include <QtSql/QSqlDatabase>
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
+#include "LiveFlightsService.h"
 
 class OpenSkyFetcher; // forward
 
@@ -43,14 +44,14 @@ public:
     // existing DB rows outside the rectangle to keep DB consistent with UI.
     void setGeoFilter(double minLat, double maxLat, double minLon, double maxLon);
     void clearGeoFilter();
-
-    
     void onTick(); // called by Bridge master timer
+    void selectFlight(const QString& icao24);
 
 signals:
     void flightsForTileReady(const QJsonObject& obj);
     void serviceError(const QString& msg);
     void flightsMergedReady(const QJsonObject& obj);
+    void trackLineReady(const QJsonArray& points);
 
 private:
     struct CacheEntry { QJsonObject payload; QDateTime ts; };
@@ -81,4 +82,12 @@ private:
     void pruneStale();
     QJsonObject readStatesLiveFromDb() const;
     void emitFromDb();
+
+    void clearTrackTable();
+    void insertTrackPointsToDb(const QString& icao24, const QJsonArray& points);
+    QJsonArray readTrackFromDb(const QString& icao24) const;
+    void maybeAppendLivePoint();
+
+    QString selectedIcao24_;
+    qint64 lastTrackMinuteBucket_ = -1;
 };

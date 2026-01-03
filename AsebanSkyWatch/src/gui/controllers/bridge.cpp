@@ -12,6 +12,7 @@
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
 #include <QDateTime>
+#include <QRegularExpression>
 
 void Bridge::mouseMoved(double lat, double lon) {
     qInfo() << "[MAP]" << "lat=" << lat << "lon=" << lon;
@@ -31,6 +32,13 @@ void Bridge::setService(LiveFlightsService* s) {
 
     connect(service_, &LiveFlightsService::serviceError,
         this, &Bridge::error);
+
+    connect(service_, &LiveFlightsService::trackLineReady,
+        this, [this](const QJsonArray& arr) {
+            const QString json = QString::fromUtf8(
+                QJsonDocument(arr).toJson(QJsonDocument::Compact));
+            emit trackLineReady(json);
+        });
 
 	//  master timer to drive periodic updates
     if (!masterTimer_) {
@@ -160,6 +168,25 @@ void Bridge::requestTileAt(double lat, double lon, int z)
 
     // trigger multi-point weather sampling for this tile
     weatherService_->requestWeatherSamples(tileKey, pts);
+}
+
+void Bridge::selectFlight(const QString& icao24)
+{
+    if (!service_) {
+        emit error("LiveFlightsService not set");
+        return;
+    }
+
+    // accept only ICAO24 hex (6 chars)
+    static QRegularExpression re("^[0-9a-fA-F]{6}$");
+    const QString key = icao24.trimmed();
+    if (!re.match(key).hasMatch()) {
+        emit error("Invalid icao24");
+        return;
+    }
+
+    emit trackCleared();
+    service_->selectFlight(key);
 }
 
 void Bridge::onMasterTick() {

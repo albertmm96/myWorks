@@ -23,6 +23,16 @@ public:
     void setBasicAuth(const QString& user, const QString& pass);
 	// inserts states from obj["states"] into the given db (or default connection if none given)
     void insertStatesToDb(const QJsonObject& obj);
+    void fetchFlightsAircraft(
+        const QString& icao24, qint64 begin, qint64 end,
+        std::function<void(const QJsonArray&)> onOk,
+        std::function<void(const QString&)> onErr);
+
+    void fetchTrackAll(
+        const QString& icao24, qint64 time,
+        std::function<void(const QJsonObject&)> onOk,
+        std::function<void(const QString&)> onErr);
+
 
 signals:
     void dataReady(const QJsonDocument&);

@@ -24,6 +24,7 @@ public:
 public slots:
     void mouseMoved(double lat, double lon);
     void requestTileAt(double lat, double lon, int z);
+    void selectFlight(const QString& icao24);
 
 private slots:
     void onMasterTick();
@@ -33,6 +34,8 @@ signals:
     void weatherForTile(const QString& weatherJson);
     void weatherSamplesForTile(const QString& samplesJson);
     void error(const QString& message);
+    void trackLineReady(const QString& json);
+    void trackCleared();
 
 private:
     LiveFlightsService* service_ = nullptr;
