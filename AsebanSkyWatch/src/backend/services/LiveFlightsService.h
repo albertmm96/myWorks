@@ -46,6 +46,7 @@ public:
     void clearGeoFilter();
     void onTick(); // called by Bridge master timer
     void selectFlight(const QString& icao24);
+    void clearCache();
 
 signals:
     void flightsForTileReady(const QJsonObject& obj);

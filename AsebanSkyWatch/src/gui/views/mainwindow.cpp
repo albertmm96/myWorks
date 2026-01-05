@@ -400,6 +400,24 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
       });
       
 
+
+
+      // clear flights layer when flights checkbox is unchecked (= c++ emits signals)
+      bridge.clearFlights.connect(function () {
+          liveSource.clear();
+      });
+      
+
+      bridge.clearWeather.connect(function () {
+        // clear vector source
+        weatherSampleSource.clear();
+      
+        // clear per-tile cache, otherwise old features can persist/reappear
+        weatherTileFeatures.clear();
+      });
+
+
+
       // tileKey -> array of features currently displayed for that tile
       const weatherTileFeatures = new Map();
       
@@ -436,7 +454,7 @@ static const char* kMapHtml = R"HTML(<!DOCTYPE html>
         weatherTileFeatures.set(tileKey, feats);
       });
 
-
+    
     });
   </script>
 
@@ -470,6 +488,12 @@ MainWindow::MainWindow(QWidget* parent)
     layout->addWidget(splitter);
     central->setLayout(layout);
     setCentralWidget(central);
+
+    connect(ui->ShowFlightsCheckBox, &QCheckBox::toggled,
+        this, &MainWindow::onFlightsCheckboxToggled);
+
+    connect(ui->ShowWeatherCheckBox, &QCheckBox::toggled,
+        this, &MainWindow::onWeatherCheckboxToggled);
 
     sliderBubbleLabel = new QLabel(centralWidget());
     sliderBubbleLabel->setObjectName("sliderBubbleLabel");
@@ -714,6 +738,18 @@ void MainWindow::onLongitudeSliderValueChanged(int value)
         showSliderBubble(ui->longitudeSlider, degrees);
 
     applyGeoFilter();
+}
+
+void MainWindow::onFlightsCheckboxToggled(bool checked)
+{
+    qInfo() << "[UI] Flights checkbox =" << checked;
+    bridge->setFlightsEnabled(checked);
+}
+
+void MainWindow::onWeatherCheckboxToggled(bool checked)
+{
+    qInfo() << "[UI] Weather checkbox =" << checked;
+    bridge->setWeatherEnabled(checked);
 }
 
 void MainWindow::applyGeoFilter()

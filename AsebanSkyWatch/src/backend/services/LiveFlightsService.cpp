@@ -620,6 +620,21 @@ void LiveFlightsService::selectFlight(const QString& icao24)
     );
 }
 
+void LiveFlightsService::clearCache()
+{
+    qInfo() << "[LiveFlightsService] clearCache()";
+
+    cache_.clear();
+    activeTiles_.clear();
+    byIcao_.clear();
+    lastMerged_ = QJsonObject();
+
+    // we also clear selection/track state
+    selectedIcao24_.clear();
+    lastTrackMinuteBucket_ = -1;
+}
+
+
 void LiveFlightsService::maybeAppendLivePoint()
 {
     if (selectedIcao24_.isEmpty()) return;

@@ -86,6 +86,28 @@ void LiveWeatherService::requestWeatherSamples(const QString& tileKey,
     fetchNextSample_();
 }
 
+void LiveWeatherService::clearCache()
+{
+    qInfo() << "[LiveWeatherService] clearCache()";
+
+    // stop any in-progress sampling
+    samplingActive_ = false;
+    pendingSamples_.clear();
+    completedSamples_ = QJsonArray();
+
+    // clear single-point anchor cache
+    cache_ = QJsonObject();
+    cacheTs_ = QDateTime();
+
+    // clear all active tile sampling state so it can't repopulate after TRUNCATE
+    activeTileSamples_.clear();
+    tileLastFetchUtc_.clear();
+    refreshTileKeys_.clear();
+    refreshTileIndex_ = 0;
+    currentTileKey_.clear();
+}
+
+
 void LiveWeatherService::fetchNextSample_()
 {
     if (pendingSamples_.isEmpty()) {

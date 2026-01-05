@@ -112,13 +112,18 @@ void Bridge::requestTileAt(double lat, double lon, int z)
     // =========================
     // 1) FLIGHTS
     // =========================
-    if (service_) {
+    if (service_ && flightsEnabled_) {
         service_->requestTile(lat, lon, z);
     }
 
     // =========================
     // 2) WEATHER – TILE SAMPLING
     // =========================
+    
+    if (!weatherEnabled_) {
+        return;
+    }
+
     if (!weatherService_) {
         emit error("LiveWeatherService not set");
         return;
@@ -190,15 +195,66 @@ void Bridge::selectFlight(const QString& icao24)
 }
 
 void Bridge::onMasterTick() {
-    // we flush flights cache to DB
-    if (service_) service_->onTick();
+	// we flush flights cache to DB flights show checkbox is enabled
+    if (service_ && flightsEnabled_) service_->onTick();
 
-    // we flush weather cache to DB
-    if (weatherService_) weatherService_->onTick();
+	// we flush weather cache to DB and weather show checkbox is enabled
+    if (weatherService_ && weatherEnabled_) weatherService_->onTick();
 
     qInfo() << "[MasterTick]";
 
 }
+
+void Bridge::setFlightsEnabled(bool enabled)
+{
+    flightsEnabled_ = enabled;
+    qInfo() << "[Bridge] flightsEnabled_ =" << flightsEnabled_;
+
+    if (!enabled) {
+        // stop showing immediately
+        emit clearFlights();
+
+        // clear DB
+        QSqlDatabase db = QSqlDatabase::database("pg_flights");
+        if (db.isValid() && db.isOpen()) {
+            QSqlQuery q(db);
+            if (!q.exec("TRUNCATE TABLE states_live;")) {
+                qWarning() << "[Bridge] TRUNCATE states_live failed:" << q.lastError().text();
+            }
+        }
+
+        // 3) clear service caches so old data cannot “come back”
+        if (service_) {
+            service_->clearCache();
+        }
+    }
+}
+
+void Bridge::setWeatherEnabled(bool enabled)
+{
+    weatherEnabled_ = enabled;
+    qInfo() << "[Bridge] weatherEnabled_ =" << weatherEnabled_;
+
+    if (!enabled) {
+        // 1) stop showing immediately
+        emit clearWeather();
+
+        // 2) clear DB
+        QSqlDatabase db = QSqlDatabase::database("pg_weather");
+        if (db.isValid() && db.isOpen()) {
+            QSqlQuery q(db);
+            if (!q.exec("TRUNCATE TABLE weather_live;")) {
+                qWarning() << "[Bridge] TRUNCATE weather_live failed:" << q.lastError().text();
+            }
+        }
+
+        // 3) clear weather service caches (active tiles etc.)
+        if (weatherService_) {
+            weatherService_->clearCache();
+        }
+    }
+}
+
 
 void Bridge::setGeoFilter(double minLat, double maxLat, double minLon, double maxLon)
 {

@@ -50,7 +50,8 @@ private slots:
     void onViewTool();
     void onExport();
     void onMarkingTool();
-
     void onLatitudeSliderValueChanged(int value);
     void onLongitudeSliderValueChanged(int value);
+    void onFlightsCheckboxToggled(bool checked);
+    void onWeatherCheckboxToggled(bool checked);
 };

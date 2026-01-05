@@ -25,6 +25,8 @@ public slots:
     void mouseMoved(double lat, double lon);
     void requestTileAt(double lat, double lon, int z);
     void selectFlight(const QString& icao24);
+    void setFlightsEnabled(bool enabled);
+    void setWeatherEnabled(bool enabled);
 
 private slots:
     void onMasterTick();
@@ -36,6 +38,8 @@ signals:
     void error(const QString& message);
     void trackLineReady(const QString& json);
     void trackCleared();
+    void clearFlights();
+    void clearWeather();
 
 private:
     LiveFlightsService* service_ = nullptr;
@@ -56,4 +60,6 @@ private:
     QTimer* masterTimer_ = nullptr;
     int masterTickMs_ = 3000; // match flights cadence initially
 
+    bool flightsEnabled_ = true;
+    bool weatherEnabled_ = true;
 };

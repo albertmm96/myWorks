@@ -18,6 +18,7 @@ public:
     void onTick(); // called by Bridge master timer
     void requestWeatherSamples(const QString& tileKey,
         const QVector<QPair<double, double>>& points);
+    void clearCache();
 
 signals:
     void weatherReady(const QJsonObject& obj);
