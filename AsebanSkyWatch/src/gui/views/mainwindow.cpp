@@ -646,6 +646,10 @@ MainWindow::MainWindow(QWidget* parent)
 	connect(ui->actionView_Tool, &QAction::triggered, this, &MainWindow::onViewTool);
 	connect(ui->actionExport, &QAction::triggered, this, &MainWindow::onExport);
     connect(ui->actionMarking_Tools, &QAction::triggered, this, &MainWindow::onMarkingTool);
+
+    // force an initial state of checkbox handlers for the app launch (if unchecked & we click on a tile, nothing happens)
+    onFlightsCheckboxToggled(ui->ShowFlightsCheckBox->isChecked());
+    onWeatherCheckboxToggled(ui->ShowWeatherCheckBox->isChecked());
 }
 
 MainWindow::~MainWindow()

@@ -21,6 +21,9 @@ public:
     void setWeatherService(LiveWeatherService* s);
     Q_INVOKABLE void requestWeatherAt(double lat, double lon);
 
+    bool flightsEnabled_ = true;
+    bool weatherEnabled_ = true;
+
 public slots:
     void mouseMoved(double lat, double lon);
     void requestTileAt(double lat, double lon, int z);
@@ -59,7 +62,4 @@ private:
 	// single, unique global clock to manage weather/flights cadence
     QTimer* masterTimer_ = nullptr;
     int masterTickMs_ = 3000; // match flights cadence initially
-
-    bool flightsEnabled_ = true;
-    bool weatherEnabled_ = true;
 };
