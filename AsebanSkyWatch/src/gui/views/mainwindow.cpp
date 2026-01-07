@@ -674,9 +674,9 @@ void MainWindow::updateSliderRangesFromDb()
     ui->longitudeSlider->setMinimum(toSlider(dbMinLon_));
     ui->longitudeSlider->setMaximum(toSlider(dbMaxLon_));
 
-    // optional: default at 0° / 0°
-    ui->latitudeSlider->setValue(toSlider(0.0));
-    ui->longitudeSlider->setValue(toSlider(0.0));
+    // default at max, to filter nothing first
+    ui->latitudeSlider->setValue(ui->latitudeSlider->maximum());
+    ui->longitudeSlider->setValue(ui->longitudeSlider->maximum());
 }
 
 void MainWindow::showSliderBubble(QSlider* slider, double degrees)
