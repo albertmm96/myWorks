@@ -515,11 +515,17 @@ MainWindow::MainWindow(QWidget* parent)
     // tracking + connections can stay where they are (after this)
     ui->latitudeSlider->setTracking(true);
     ui->longitudeSlider->setTracking(true);
+    ui->temperatureSlider->setTracking(true);
+    ui->pressureSlider->setTracking(true);
 
     connect(ui->latitudeSlider, &QSlider::valueChanged,
         this, &MainWindow::onLatitudeSliderValueChanged);
     connect(ui->longitudeSlider, &QSlider::valueChanged,
         this, &MainWindow::onLongitudeSliderValueChanged);
+    connect(ui->temperatureSlider, &QSlider::valueChanged,
+        this, &MainWindow::onTemperatureSliderValueChanged);
+    connect(ui->pressureSlider, &QSlider::valueChanged,
+        this, &MainWindow::onPressureSliderValueChanged);
 
     if (!ui->scrollAreaWidgetContents->layout()) {
         auto* v = new QVBoxLayout(ui->scrollAreaWidgetContents);
@@ -677,6 +683,15 @@ void MainWindow::updateSliderRangesFromDb()
     // default at max, to filter nothing first
     ui->latitudeSlider->setValue(ui->latitudeSlider->maximum());
     ui->longitudeSlider->setValue(ui->longitudeSlider->maximum());
+
+    // Weather sliders: temperature in 0.1°C steps, pressure in hPa
+    ui->temperatureSlider->setMinimum(-500);   // -50.0°C
+    ui->temperatureSlider->setMaximum(500);    // +50.0°C
+    ui->temperatureSlider->setValue(ui->temperatureSlider->maximum()); // default = no filtering
+
+    ui->pressureSlider->setMinimum(800);       // 800 hPa
+    ui->pressureSlider->setMaximum(1100);      // 1100 hPa
+    ui->pressureSlider->setValue(ui->pressureSlider->maximum());       // default = no filtering
 }
 
 void MainWindow::showSliderBubble(QSlider* slider, double degrees)
@@ -744,6 +759,27 @@ void MainWindow::onLongitudeSliderValueChanged(int value)
     applyGeoFilter();
 }
 
+void MainWindow::onTemperatureSliderValueChanged(int value)
+{
+    const double tempC = value / 10.0; // 0.1°C units
+    if (QApplication::mouseButtons() & Qt::LeftButton) {
+        sliderBubbleLabel->setText(QString::number(tempC, 'f', 1) + " °C");
+        sliderBubbleLabel->adjustSize();
+        showSliderBubble(ui->temperatureSlider, tempC);
+    }
+    applyWeatherFilter();
+}
+
+void MainWindow::onPressureSliderValueChanged(int value)
+{
+    if (QApplication::mouseButtons() & Qt::LeftButton) {
+        sliderBubbleLabel->setText(QString::number(value) + " hPa");
+        sliderBubbleLabel->adjustSize();
+        showSliderBubble(ui->pressureSlider, value);
+    }
+    applyWeatherFilter();
+}
+
 void MainWindow::onFlightsCheckboxToggled(bool checked)
 {
     qInfo() << "[UI] Flights checkbox =" << checked;
@@ -780,4 +816,17 @@ void MainWindow::applyGeoFilter()
         << "lon:" << minLon << "->" << maxLon;
 
     bridge->setGeoFilter(minLat, maxLat, minLon, maxLon);
+}
+
+void MainWindow::applyWeatherFilter()
+{
+    if (!bridge) return;
+
+    const double minTempC = ui->temperatureSlider->minimum() / 10.0;
+    const double maxTempC = ui->temperatureSlider->value() / 10.0;
+
+    const int minPress = ui->pressureSlider->minimum();
+    const int maxPress = ui->pressureSlider->value();
+
+    bridge->setWeatherValueFilter(minTempC, maxTempC, minPress, maxPress);
 }

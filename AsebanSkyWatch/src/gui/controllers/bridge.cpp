@@ -255,6 +255,12 @@ void Bridge::setWeatherEnabled(bool enabled)
     }
 }
 
+void Bridge::setWeatherValueFilter(double minTempC, double maxTempC, int minPressure, int maxPressure)
+{
+    if (!weatherService_) return;
+    weatherService_->setValueFilter(minTempC, maxTempC, minPressure, maxPressure);
+    weatherService_->applyValueFilterNow();
+}
 
 void Bridge::setGeoFilter(double minLat, double maxLat, double minLon, double maxLon)
 {

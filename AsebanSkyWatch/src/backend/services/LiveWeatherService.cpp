@@ -107,6 +107,53 @@ void LiveWeatherService::clearCache()
     currentTileKey_.clear();
 }
 
+void LiveWeatherService::setValueFilter(double minTempC, double maxTempC, int minPressure, int maxPressure)
+{
+    if (minTempC > maxTempC) std::swap(minTempC, maxTempC);
+    if (minPressure > maxPressure) std::swap(minPressure, maxPressure);
+
+    minTempC_ = minTempC;
+    maxTempC_ = maxTempC;
+    minPressure_ = minPressure;
+    maxPressure_ = maxPressure;
+
+    valueFilterEnabled_ = true;
+
+    qInfo() << "[LiveWeatherService] Value filter set:"
+        << "temp" << minTempC_ << "->" << maxTempC_
+        << "pressure" << minPressure_ << "->" << maxPressure_;
+}
+
+void LiveWeatherService::applyValueFilterNow()
+{
+    QSqlDatabase db = QSqlDatabase::database("pg_weather");
+    if (!db.isOpen()) {
+        emit serviceError("weather filter apply failed: pg_weather not open");
+        return;
+    }
+
+    if (valueFilterEnabled_) {
+        // we  delete rows that do NOT match current filter (DB becomes “reality”)
+        const QString sql = QString(
+            "DELETE FROM weather_live "
+            "WHERE (temp_c IS NULL OR temp_c < %1 OR temp_c > %2) "
+            "   OR (pressure_hpa IS NULL OR pressure_hpa < %3 OR pressure_hpa > %4);"
+        )
+            .arg(QString::number(minTempC_, 'f', 6))
+            .arg(QString::number(maxTempC_, 'f', 6))
+            .arg(QString::number(minPressure_))
+            .arg(QString::number(maxPressure_));
+
+        QSqlQuery q(db);
+        if (!q.exec(sql)) {
+            emit serviceError(QString("weather filter delete failed: %1").arg(q.lastError().text()));
+        }
+    }
+
+    // we reemit samples so JS redraws circles according to DB after deletion
+    emitFilteredSamplesForAllTiles_();
+}
+
 
 void LiveWeatherService::fetchNextSample_()
 {
@@ -176,6 +223,34 @@ void LiveWeatherService::upsertWeatherObject_(const QJsonObject& obj, double lat
         return;
     }
 
+
+	// weather value filtering
+    if (valueFilterEnabled_) {
+        const bool tempOk =
+            !std::isnan(tempC) &&
+            tempC >= minTempC_ &&
+            tempC <= maxTempC_;
+
+        const bool pressureOk =
+            (pressure >= 0) &&
+            pressure >= minPressure_ &&
+            pressure <= maxPressure_;
+
+        if (!tempOk || !pressureOk) {
+            QSqlQuery del(db);
+            del.prepare(
+                "DELETE FROM weather_live "
+                "WHERE abs(lat - :lat) < 1e-6 "
+                "  AND abs(lon - :lon) < 1e-6;"
+            );
+            del.bindValue(":lat", lat);
+            del.bindValue(":lon", lon);
+            del.exec();
+            return; // we skip the insert/update
+        }
+    }
+
+
     auto sqlNumOrNull = [](double v) -> QString {
         return std::isnan(v) ? "NULL" : QString::number(v, 'f', 6);
         };
@@ -239,6 +314,61 @@ bool LiveWeatherService::tileIsStale_(const QString& tileKey) const
 
     const int age = last.secsTo(QDateTime::currentDateTimeUtc());
     return age >= tileRefreshSeconds_;
+}
+
+void LiveWeatherService::emitFilteredSamplesForAllTiles_()
+{
+    // we rebuild for each tileKey we have sampled points for
+    for (auto it = activeTileSamples_.cbegin(); it != activeTileSamples_.cend(); ++it) {
+        const QString tileKey = it.key();
+        const QJsonArray arr = buildFilteredTileArray_(tileKey);
+        emit weatherSamplesReady(arr); // the bridge forwards to JS are unchanged here
+    }
+}
+
+QJsonArray LiveWeatherService::buildFilteredTileArray_(const QString& tileKey)
+{
+    QJsonArray out;
+
+    const auto points = activeTileSamples_.value(tileKey);
+    if (points.isEmpty())
+        return out;
+
+    QSqlDatabase db = QSqlDatabase::database("pg_weather");
+    if (!db.isOpen())
+        return out;
+
+    // we rely on DB being already filtered (applyValueFilterNow deletes non-matching),
+    // so “exists row” == “should show”.
+    QSqlQuery q(db);
+    q.prepare(
+        "SELECT 1 FROM weather_live "
+        "WHERE abs(lat - :lat) < 1e-6 AND abs(lon - :lon) < 1e-6 "
+        "LIMIT 1;"
+    );
+
+    for (const auto& p : points) {
+        const double lat = p.first;
+        const double lon = p.second;
+
+        q.bindValue(":lat", lat);
+        q.bindValue(":lon", lon);
+
+        if (!q.exec()) {
+            // if something goes wrong, fail “closed” (don’t draw)
+            continue;
+        }
+
+        if (q.next()) {
+            QJsonObject pt;
+            pt["lat"] = lat;
+            pt["lon"] = lon;
+            pt["tileKey"] = tileKey;
+            out.append(pt);
+        }
+    }
+
+    return out;
 }
 
 void LiveWeatherService::refreshOneTileIfStale_()

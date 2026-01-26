@@ -37,6 +37,7 @@ private:
 
     void showSliderBubble(QSlider* slider, double degrees);
     void applyGeoFilter();
+    void applyWeatherFilter();
 
     double dbMinLat_ = -90.0;
     double dbMaxLat_ = +90.0;
@@ -52,6 +53,8 @@ private slots:
     void onMarkingTool();
     void onLatitudeSliderValueChanged(int value);
     void onLongitudeSliderValueChanged(int value);
+    void onTemperatureSliderValueChanged(int value);
+    void onPressureSliderValueChanged(int value);
     void onFlightsCheckboxToggled(bool checked);
     void onWeatherCheckboxToggled(bool checked);
 };

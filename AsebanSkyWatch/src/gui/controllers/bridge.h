@@ -30,6 +30,7 @@ public slots:
     void selectFlight(const QString& icao24);
     void setFlightsEnabled(bool enabled);
     void setWeatherEnabled(bool enabled);
+    void setWeatherValueFilter(double minTempC, double maxTempC, int minPressure, int maxPressure);
 
 private slots:
     void onMasterTick();

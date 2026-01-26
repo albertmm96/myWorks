@@ -19,6 +19,8 @@ public:
     void requestWeatherSamples(const QString& tileKey,
         const QVector<QPair<double, double>>& points);
     void clearCache();
+    void setValueFilter(double minTempC, double maxTempC, int minPressure, int maxPressure);
+    void applyValueFilterNow();
 
 signals:
     void weatherReady(const QJsonObject& obj);
@@ -59,4 +61,11 @@ private:
 
     void refreshOneTileIfStale_();
     bool tileIsStale_(const QString& tileKey) const;
+    bool valueFilterEnabled_ = false;
+    double minTempC_ = -1e9;
+    double maxTempC_ = +1e9;
+    int minPressure_ = -1;
+    int maxPressure_ = 100000;
+    void emitFilteredSamplesForAllTiles_();
+    QJsonArray buildFilteredTileArray_(const QString& tileKey);
 };
