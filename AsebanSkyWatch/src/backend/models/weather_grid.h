@@ -54,6 +54,8 @@ namespace skywatch::model {
         std::vector<double> vNorthMS;
         std::vector<double> temperatureK;  // we keep empty if unused
         std::vector<double> pressureHPa;   // we keep empty if unused
+        std::vector<double> windGustMS;    
+        std::vector<double> humidityPct;   
 
         WeatherGrid() = default;
 
@@ -167,6 +169,46 @@ namespace skywatch::model {
             // shear magnitude proxy
             const double shear = std::sqrt(du_dx * du_dx + dv_dx * dv_dx + du_dy * du_dy + dv_dy * dv_dy);
             return shear;
+        }
+
+        // bilinear interpolation for scalar arrays (gust/humidity)
+        [[nodiscard]] std::optional<double> scalarAt_(const std::vector<double>&a, double latDeg, double lonDeg) const noexcept {
+            if (!valid()) return std::nullopt;
+            if (a.empty()) return std::nullopt;
+            
+            const double y = (latDeg - meta.latMinDeg) / meta.dLatDeg;
+            const double x = (lonDeg - meta.lonMinDeg) / meta.dLonDeg;
+            if (!(x >= 0.0 && y >= 0.0)) return std::nullopt;
+            
+                const int x0 = static_cast<int>(std::floor(x));
+            const int y0 = static_cast<int>(std::floor(y));
+            const int x1 = x0 + 1;
+            const int y1 = y0 + 1;
+            if (x0 < 0 || y0 < 0 || x1 >= meta.cols || y1 >= meta.rows) return std::nullopt;
+            
+            const double fx = x - x0;
+            const double fy = y - y0;
+            
+            const auto i00 = idx(y0, x0);
+            const auto i10 = idx(y0, x1);
+            const auto i01 = idx(y1, x0);
+            const auto i11 = idx(y1, x1);
+            
+            const double s00 = a[i00], s10 = a[i10], s01 = a[i01], s11 = a[i11];
+            if (!std::isfinite(s00) || !std::isfinite(s10) || !std::isfinite(s01) || !std::isfinite(s11)) return std::nullopt;
+            
+            const double s0 = s00 * (1.0 - fx) + s10 * fx;
+            const double s1 = s01 * (1.0 - fx) + s11 * fx;
+            return s0 * (1.0 - fy) + s1 * fy;
+            
+        }
+        
+        [[nodiscard]] std::optional<double> windGustAt(double latDeg, double lonDeg) const noexcept {
+           return scalarAt_(windGustMS, latDeg, lonDeg);
+        }
+
+        [[nodiscard]] std::optional<double> humidityAt(double latDeg, double lonDeg) const noexcept {
+           return scalarAt_(humidityPct, latDeg, lonDeg);  
         }
     };
 

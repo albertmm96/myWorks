@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Aseban Skywatch v1.1 (2025)</string>
+   <string>Aseban Skywatch v1.2 (2026)</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QTableView" name="tableView">

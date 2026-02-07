@@ -1,5 +1,6 @@
 #include "LiveWeatherService.h"
 #include "OpenWeatherFetcher.h"
+#include <algorithm>
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -23,6 +24,37 @@ LiveWeatherService::LiveWeatherService(OpenWeatherFetcher* fetcher, QObject* par
             pt["lon"] = currentSampleLon_;
             pt["tileKey"] = currentTileKey_;   // we will set this in requestWeatherSamples
             completedSamples_.append(pt);
+
+
+            // we store also the fields needed for WT in-memory & UI
+            double windSpeed = NAN, windGust = NAN;
+            int windDeg = -1, humidity = -1;
+            
+            if (obj.contains("wind") && obj["wind"].isObject()) {
+            const QJsonObject w = obj["wind"].toObject();
+            if (w.contains("speed")) windSpeed = w.value("speed").toDouble(windSpeed);
+            if (w.contains("deg"))   windDeg = w.value("deg").toInt(windDeg);
+            if (w.contains("gust"))  windGust = w.value("gust").toDouble(windGust);
+                
+            }
+
+            if (obj.contains("main") && obj["main"].isObject()) {
+               const QJsonObject m = obj["main"].toObject();
+               if (m.contains("humidity")) humidity = m.value("humidity").toInt(humidity);
+               
+            }
+            
+            QJsonObject sample;
+            sample["lat"] = currentSampleLat_;
+            sample["lon"] = currentSampleLon_;
+            sample["tileKey"] = currentTileKey_;
+            sample["t"] = static_cast<qint64>(QDateTime::currentSecsSinceEpoch());
+            sample["windSpeed"] = std::isnan(windSpeed) ? QJsonValue(QJsonValue::Null) : QJsonValue(windSpeed);
+            sample["windDeg"] = (windDeg < 0) ? QJsonValue(QJsonValue::Null) : QJsonValue(windDeg);
+            sample["windGust"] = std::isnan(windGust) ? QJsonValue(QJsonValue::Null) : QJsonValue(windGust);
+            sample["humidity"] = (humidity < 0) ? QJsonValue(QJsonValue::Null) : QJsonValue(humidity);
+            completedSamples_.append(sample);
+
 
             fetchNextSample_();
             return;
@@ -154,12 +186,21 @@ void LiveWeatherService::applyValueFilterNow()
     emitFilteredSamplesForAllTiles_();
 }
 
+const skywatch::model::WeatherGrid* LiveWeatherService::gridForTile(const QString& tileKey) const {
+    auto it = tileWeatherGrids_.find(tileKey);
+    if (it == tileWeatherGrids_.end()) return nullptr;
+    return &it.value();
+}
 
-void LiveWeatherService::fetchNextSample_()
-{
+static bool approxEq(double a, double b, double eps = 1e-9) {
+    return std::abs(a - b) <= eps;
+}
+
+void LiveWeatherService::fetchNextSample_() {
     if (pendingSamples_.isEmpty()) {
         samplingActive_ = false;
         tileLastFetchUtc_[currentTileKey_] = QDateTime::currentDateTimeUtc();
+        buildTileGridFromCompleted_();
         emit weatherSamplesReady(completedSamples_);
         return;
     }
@@ -173,8 +214,7 @@ void LiveWeatherService::fetchNextSample_()
     fetcher_->fetchCurrentWeather(currentSampleLat_, currentSampleLon_);
 }
 
-void LiveWeatherService::upsertWeatherObject_(const QJsonObject& obj, double lat, double lon)
-{
+void LiveWeatherService::upsertWeatherObject_(const QJsonObject& obj, double lat, double lon) {
     auto sqlQuoted = [](QString s) -> QString {
         s.replace('\'', "''");
         return "'" + s + "'";
@@ -306,8 +346,111 @@ void LiveWeatherService::upsertWeatherObject_(const QJsonObject& obj, double lat
     }
 }
 
-bool LiveWeatherService::tileIsStale_(const QString& tileKey) const
-{
+void LiveWeatherService::buildTileGridFromCompleted_() {
+
+    // completedSamples_ are objects: lat/lon + windSpeed/windDeg/windGust/humidity
+    if (completedSamples_.isEmpty()) return;
+    
+    // we collect unique lats/lons (likely N x N, plus one anchor)
+    struct Rec { double lat, lon; double spd, gust; int deg; double hum; };
+    std::vector<Rec> recs;
+    recs.reserve(completedSamples_.size());
+    
+    for (const auto& v : completedSamples_) {
+    if (!v.isObject()) continue;
+    const QJsonObject o = v.toObject();
+    const double lat = o.value("lat").toDouble(std::numeric_limits<double>::quiet_NaN());
+    const double lon = o.value("lon").toDouble(std::numeric_limits<double>::quiet_NaN());
+    const double spd = o.value("windSpeed").isDouble() ? o.value("windSpeed").toDouble() : NAN;
+    const int deg = o.value("windDeg").isDouble() ? int(o.value("windDeg").toDouble()) : -1;
+    const double gust = o.value("windGust").isDouble() ? o.value("windGust").toDouble() : NAN;
+    const double hum = o.value("humidity").isDouble() ? o.value("humidity").toDouble() : NAN;
+    if (!std::isfinite(lat) || !std::isfinite(lon)) continue;
+    recs.push_back({ lat, lon, spd, gust, deg, hum });
+        
+    }
+    
+    if (recs.size() < 4) return;
+    
+    std::vector<double> lats, lons;
+    lats.reserve(recs.size());
+    lons.reserve(recs.size());
+    
+    for (auto& r : recs) { lats.push_back(r.lat); lons.push_back(r.lon); }
+    std::sort(lats.begin(), lats.end());
+    std::sort(lons.begin(), lons.end());
+    lats.erase(std::unique(lats.begin(), lats.end(), [](double a, double b) {return approxEq(a, b, 1e-7); }), lats.end());
+    lons.erase(std::unique(lons.begin(), lons.end(), [](double a, double b) {return approxEq(a, b, 1e-7); }), lons.end());
+    
+    const std::size_t rows = lats.size();
+    const std::size_t cols = lons.size();
+    
+    if (rows < 2 || cols < 2) return;
+    
+    // if there is an anchor extra point, rows*cols will match recs.size()-1
+    const std::size_t prod = rows * cols;
+    const bool hasAnchorExtra = (prod == recs.size() - 1);
+    
+    if (!(prod == recs.size() || hasAnchorExtra)) {
+        // we still build with whatever fits, but avoid crashing: require prod <= recs.size()
+        if (prod > recs.size()) return;   
+    }
+    
+    skywatch::model::GridMeta meta{};
+    meta.rows = int(rows);
+    meta.cols = int(cols);
+    meta.latMinDeg = lats.front();
+    meta.lonMinDeg = lons.front();
+    meta.dLatDeg = (lats.back() - lats.front()) / double(rows - 1);
+    meta.dLonDeg = (lons.back() - lons.front()) / double(cols - 1);
+    
+    const std::int64_t tSec = QDateTime::currentSecsSinceEpoch();
+    skywatch::model::WeatherGrid grid(meta, tSec);
+    grid.windGustMS.assign(prod, std::numeric_limits<double>::quiet_NaN());
+    grid.humidityPct.assign(prod, std::numeric_limits<double>::quiet_NaN());
+    
+    auto findIndex = [&](double lat, double lon) -> std::optional<std::size_t> {
+        auto itLat = std::lower_bound(lats.begin(), lats.end(), lat - 1e-7);
+        std::size_t r = (itLat == lats.end()) ? rows : std::size_t(itLat - lats.begin());
+    
+        // refine
+        if (r >= rows) return std::nullopt;
+        if (!approxEq(lats[r], lat, 1e-6)) return std::nullopt;
+        
+        auto itLon = std::lower_bound(lons.begin(), lons.end(), lon - 1e-7);
+        std::size_t c = (itLon == lons.end()) ? cols : std::size_t(itLon - lons.begin());
+        if (c >= cols) return std::nullopt;
+        if (!approxEq(lons[c], lon, 1e-6)) return std::nullopt;
+        
+        return grid.idx(int(r), int(c));
+    };
+    
+    for (const auto& r : recs) {
+        const auto idxOpt = findIndex(r.lat, r.lon);
+    
+        if (!idxOpt) {
+            // likely the anchor sample: skip
+            continue;    
+        }
+    
+        const std::size_t i = *idxOpt;
+        
+        // OpenWeather: wind.deg is direction wind is coming FROM (meteorological)
+        // Convert to flow vector (towards): vE = -spd*sin(theta_from), vN = -spd*cos(theta_from)
+        if (std::isfinite(r.spd) && r.deg >= 0) {
+            const double th = double(r.deg) * M_PI / 180.0;
+            grid.uEastMS[i] = -r.spd * std::sin(th);
+            grid.vNorthMS[i] = -r.spd * std::cos(th);    
+        }
+
+        if (std::isfinite(r.gust)) grid.windGustMS[i] = r.gust;
+        if (std::isfinite(r.hum))  grid.humidityPct[i] = r.hum;
+    }
+    
+    tileWeatherGrids_[currentTileKey_] = std::move(grid);
+}
+
+bool LiveWeatherService::tileIsStale_(const QString& tileKey) const {
     const QDateTime last = tileLastFetchUtc_.value(tileKey);
     if (!last.isValid())
         return true;

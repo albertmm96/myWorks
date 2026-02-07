@@ -1,4 +1,7 @@
 #pragma once
+
+#include "weather_grid.h"
+
 #include <QObject>
 #include <QJsonObject>
 #include <QDateTime>
@@ -21,6 +24,7 @@ public:
     void clearCache();
     void setValueFilter(double minTempC, double maxTempC, int minPressure, int maxPressure);
     void applyValueFilterNow();
+    const skywatch::model::WeatherGrid * gridForTile(const QString & tileKey) const;
 
 signals:
     void weatherReady(const QJsonObject& obj);
@@ -48,8 +52,15 @@ private:
 
     QString currentTileKey_;
 
+    // in memory per-tile weather grids (DB/API independent consumer)
+    QHash<QString, skywatch::model::WeatherGrid> tileWeatherGrids_;
+
     void fetchNextSample_();
     void upsertWeatherObject_(const QJsonObject& obj, double lat, double lon);
+
+    // build/update a tile WeatherGrid from completedSamples_ when sampling finishes
+    void buildTileGridFromCompleted_();
+
     // active tile sampling registry, so we can refresh periodically
     QHash<QString, QVector<QPair<double, double>>> activeTileSamples_;
     QHash<QString, QDateTime> tileLastFetchUtc_;

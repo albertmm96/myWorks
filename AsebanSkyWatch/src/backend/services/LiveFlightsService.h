@@ -1,4 +1,9 @@
 ﻿#pragma once
+
+#include "LiveFlightsService.h"
+#include "aircraft_state.h"
+#include "tpi_engine.h"
+
 #include <QObject>
 #include <QHash>
 #include <QDateTime>
@@ -10,9 +15,9 @@
 #include <QtSql/QSqlDatabase>
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
-#include "LiveFlightsService.h"
 
 class OpenSkyFetcher; // forward
+class LiveWeatherService; // forward
 
 // key for tiles cache (x,y,z)  -
 struct TileKey {
@@ -35,6 +40,7 @@ class LiveFlightsService : public QObject {
     Q_OBJECT
 public:
     explicit LiveFlightsService(OpenSkyFetcher* fetcher, QObject* parent = nullptr);
+    void setWeatherService(LiveWeatherService * ws) { weatherService_ = ws; }
 
     void requestTile(double lat, double lon, int z);
     void setTtlSeconds(int s) { ttlSeconds_ = s; }
@@ -53,6 +59,8 @@ signals:
     void serviceError(const QString& msg);
     void flightsMergedReady(const QJsonObject& obj);
     void trackLineReady(const QJsonArray& points);
+    void tpiForTilesReady(const QJsonObject & obj);
+
 
 private:
     struct CacheEntry { QJsonObject payload; QDateTime ts; };
@@ -91,4 +99,8 @@ private:
 
     QString selectedIcao24_;
     qint64 lastTrackMinuteBucket_ = -1;
+
+    LiveWeatherService * weatherService_ = nullptr;
+    skywatch::compute::tpi::TpiEngine tpi_;
+    std::vector<skywatch::model::AircraftState> tickAircraft_;
 };

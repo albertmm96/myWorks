@@ -42,6 +42,7 @@ signals:
     void error(const QString& message);
     void trackLineReady(const QString& json);
     void trackCleared();
+    void tpiForTiles(const QString& json);
     void clearFlights();
     void clearWeather();
 

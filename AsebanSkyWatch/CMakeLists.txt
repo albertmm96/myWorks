@@ -22,7 +22,7 @@ add_executable(AsebanSkyWatch
     src/gui/views/mainwindow.cpp
     src/gui/views/mainwindow.h
     src/gui/views/mainwindow.ui
- "src/gui/controllers/bridge.h" "src/gui/controllers/bridge.cpp" "src/utils/tile_math.h" "src/utils/tile_math.cpp" "src/backend/services/LiveFlightsService.h" "src/backend/services/LiveFlightsService.cpp"  "src/backend/fetch/openWeatherFetcher.h" "src/backend/fetch/openWeatherFetcher.cpp" "src/backend/services/LiveWeatherService.h" "src/backend/services/LiveWeatherService.cpp" "src/backend/models/aircraft_state.h" "src/backend/models/weather_grid.h")
+ "src/gui/controllers/bridge.h" "src/gui/controllers/bridge.cpp" "src/utils/tile_math.h" "src/utils/tile_math.cpp" "src/backend/services/LiveFlightsService.h" "src/backend/services/LiveFlightsService.cpp"  "src/backend/fetch/openWeatherFetcher.h" "src/backend/fetch/openWeatherFetcher.cpp" "src/backend/services/LiveWeatherService.h" "src/backend/services/LiveWeatherService.cpp" "src/backend/models/aircraft_state.h" "src/backend/models/weather_grid.h" "src/backend/compute/tpi/rolling_window.h" "src/backend/compute/tpi/robust_stats.h" "src/backend/compute/tpi/tpi_engine.h" "src/backend/compute/tpi/tpi_engine.cpp")
 
 add_custom_command(TARGET AsebanSkyWatch POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E echo "Copying credentials json to $<TARGET_FILE_DIR:AsebanSkyWatch>"
@@ -63,5 +63,7 @@ target_include_directories(AsebanSkyWatch PRIVATE
     ${CMAKE_SOURCE_DIR}/src/gui/controllers
     ${CMAKE_SOURCE_DIR}/src/backend/fetch
     ${CMAKE_SOURCE_DIR}/src/backend/services
+    ${CMAKE_SOURCE_DIR}/src/backend/models
+    ${CMAKE_SOURCE_DIR}/src/backend/compute/tpi
     ${CMAKE_SOURCE_DIR}/src/utils
 )

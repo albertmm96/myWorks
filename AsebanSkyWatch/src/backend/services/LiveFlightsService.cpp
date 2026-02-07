@@ -1,9 +1,11 @@
 #include "LiveFlightsService.h"
 #include "openSkyFetcher.h"
 #include "tile_math.h"
+#include "LiveWeatherService.h"
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include <QtSql/QSqlDatabase>
 #include <QtSql/QSqlQuery>
@@ -13,8 +15,7 @@
 #include <QRegularExpression>
 
 LiveFlightsService::LiveFlightsService(OpenSkyFetcher* fetcher, QObject* parent)
-    : QObject(parent), fetcher_(fetcher)
-{
+    : QObject(parent), fetcher_(fetcher) {
 
 }
 
@@ -209,6 +210,7 @@ void LiveFlightsService::onTick()
     if (!fetcher_) return;
 
     const auto now = QDateTime::currentDateTimeUtc();
+    const std::int64_t nowSec = QDateTime::currentSecsSinceEpoch();
 
     // we fold valid cached tiles into the merged map (no network required)
     for (const TileKey& key : std::as_const(activeTiles_)) {
@@ -222,6 +224,108 @@ void LiveFlightsService::onTick()
     pruneStale();
     emitMerged(); // must update lastMerged_, but must NOT emit to UI anymore
 
+    // =========================
+    // TPI COMPUTE (in-memory only)
+    // =========================
+    {
+        // we build AircraftState snapshots from lastMerged_ (in memory union)
+        tickAircraft_.clear();
+        const QJsonArray states = lastMerged_.value("states").toArray();
+        tickAircraft_.reserve(states.size());
+        
+        auto toAircraftState = [](const QJsonArray& a) -> std::optional<skywatch::model::AircraftState> {
+            if (a.size() < 12) return std::nullopt;
+            if (!a.at(0).isString()) return std::nullopt;
+            skywatch::model::AircraftState s;
+            s.icao24 = a.at(0).toString().toStdString();
+            
+            const qint64 t4 = a.at(4).isDouble() ? qint64(a.at(4).toDouble()) : 0;
+            const qint64 t3 = a.at(3).isDouble() ? qint64(a.at(3).toDouble()) : 0;
+            s.unixTimeSec = (t4 > 0) ? t4 : t3;
+            if (s.unixTimeSec <= 0) return std::nullopt;
+            
+            if (a.at(6).isDouble()) s.latDeg = a.at(6).toDouble();
+            if (a.at(5).isDouble()) s.lonDeg = a.at(5).toDouble();
+            if (!s.hasValidPosition()) return std::nullopt;
+            
+            if (a.at(9).isDouble())  s.groundSpeedMS = a.at(9).toDouble();
+            if (a.at(10).isDouble()) s.trackDeg = a.at(10).toDouble();
+            if (a.at(11).isDouble()) s.verticalRateMS = a.at(11).toDouble();
+            if (a.at(7).isDouble())  s.baroAltM = a.at(7).toDouble();
+            if (a.size() > 13 && a.at(13).isDouble()) s.geoAltM = a.at(13).toDouble();
+            if (a.at(8).isBool()) s.onGround = a.at(8).toBool();
+            return s;
+        };
+        
+        for (const auto& v : states) {
+            if (!v.isArray()) continue;
+            const auto a = v.toArray();
+            auto sOpt = toAircraftState(a);
+            if (!sOpt) continue;
+            // we ingest rolling history (DB/API-free)
+            tpi_.ingest(*sOpt);
+            tickAircraft_.push_back(std::move(*sOpt)); 
+        }
+        
+        // we group aircraft by active tiles
+        QHash<TileKey, QVector<const skywatch::model::AircraftState*>> byTile;
+        for (const TileKey& key : std::as_const(activeTiles_)) {
+            byTile.insert(key, {});  
+        }
+        
+        for (const auto& s : tickAircraft_) {
+            for (const TileKey& key : std::as_const(activeTiles_)) {
+                auto [tx, ty] = tilemath::lonLatToTile(s.latDeg, s.lonDeg, key.z);
+                if (tx == key.x && ty == key.y) {
+                    byTile[key].append(&s);
+                    break;
+                }
+            }
+        }
+        
+        // we build JSON payload of TPI per tile (with diagnostics)
+        QJsonArray tilesOut;
+
+        for (const TileKey& key : std::as_const(activeTiles_)) {
+            auto [minLat, minLon, maxLat, maxLon] = tilemath::tileBBox(key.x, key.y, key.z);
+            double cLat = 0.5 * (minLat + maxLat);
+            double cLon = 0.5 * (minLon + maxLon);
+            
+            const QString tileKeyStr = QString("%1/%2/%3").arg(key.z).arg(key.x).arg(key.y);
+            const skywatch::model::WeatherGrid * g =
+                (weatherService_ ? weatherService_->gridForTile(tileKeyStr) : nullptr);
+           
+            // we convert QVector<> to std::vector<> view for engine
+            const auto& qv = byTile.value(key);
+            std::vector<const skywatch::model::AircraftState*> av;
+            av.reserve(qv.size());
+            for (auto* p : qv) av.push_back(p);
+            
+            skywatch::compute::tpi::TileDiag diag{};
+            const float tpiVal = tpi_.computeTileTpi(av, nowSec, g, cLat, cLon, &diag);
+            
+            QJsonObject o;
+            o["z"] = key.z; o["x"] = key.x; o["y"] = key.y;
+            o["tileKey"] = tileKeyStr;
+            o["tpi"] = tpiVal;
+            o["bt"] = diag.BT;
+            o["wt"] = diag.WT;
+            o["lambda"] = diag.lambda;
+            o["neff"] = diag.Neff;
+            o["aircraftUsed"] = int(diag.aircraft_used);
+            tilesOut.append(o);
+        }
+        
+        QJsonObject out;
+        out["time"] = static_cast<qint64>(nowSec);
+        out["tiles"] = tilesOut;
+        emit tpiForTilesReady(out);
+        
+        // we keep rolling history bounded
+        tpi_.purgeOlderThan(nowSec - 600); // keeps 10 min history in map
+    }
+
+
     // flush to DB
     if (!lastMerged_.isEmpty()) {
         qInfo() << "[Tick] activeTiles=" << activeTiles_.size()
@@ -230,7 +334,7 @@ void LiveFlightsService::onTick()
         fetcher_->insertStatesToDb(lastMerged_);
     }
 
-    // enforce DB == filter, then emit strictly from DB
+    // we enforce DB == filter, then we emit strictly from DB
     if (filterEnabled_) {
         purgeDbOutsideFilter();
     }

@@ -22,6 +22,10 @@ void Bridge::setService(LiveFlightsService* s) {
     service_ = s;
     if (!service_) return;
 
+    if (weatherService_) {
+        service_->setWeatherService(weatherService_); 
+    }
+
     // we forward merged snapshots to JS, applying filter if enabled
     connect(service_, &LiveFlightsService::flightsMergedReady,
         this, [this](const QJsonObject& obj) {
@@ -40,6 +44,15 @@ void Bridge::setService(LiveFlightsService* s) {
             emit trackLineReady(json);
         });
 
+       // Forward tile TPI payload to JS
+        connect(service_, &LiveFlightsService::tpiForTilesReady,
+            this, [this](const QJsonObject& obj) {
+                const QString json = QString::fromUtf8(
+                QJsonDocument(obj).toJson(QJsonDocument::Compact));
+                emit tpiForTiles(json);
+            });
+
+
 	//  master timer to drive periodic updates
     if (!masterTimer_) {
         masterTimer_ = new QTimer(this);
@@ -55,6 +68,11 @@ void Bridge::setWeatherService(LiveWeatherService* s)
     if (!weatherService_) return;
 
     qInfo() << "[Bridge] Weather service attached";
+
+    // allow flight service to read in-memory tile weather grids for TPI
+    if (service_) {
+        service_->setWeatherService(weatherService_);   
+    }
 
     // Forward weather JSON to JS only for now (later we can filter the DB)
     connect(weatherService_, &LiveWeatherService::weatherReady,
