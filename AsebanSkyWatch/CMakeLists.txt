@@ -40,9 +40,6 @@ if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET AsebanSkyWatch PROPERTY CXX_STANDARD 20)
 endif()
 
-# show where to find Qt installation
-# set(CMAKE_PREFIX_PATH "D:/MyApps/Qt/6.9.1/msvc2022_64")
-
 # we search for the Qt6 packages we need
 find_package(Qt6 COMPONENTS REQUIRED
     Widgets Gui Core
