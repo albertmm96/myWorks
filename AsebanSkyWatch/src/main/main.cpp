@@ -3,7 +3,6 @@
 #include "mainwindow.h"
 
 #include <QApplication>
-#include <QProcess>
 #include <QtSql/QSqlDatabase>
 #include <QtSql/QSqlQuery>
 #include <QtSql/QSqlError>
@@ -19,6 +18,60 @@ static void runQuery(QSqlQuery& query, const QString& sql) {
         exit(1);
     }
 }
+
+// creates app database with default pass
+static void ensureDatabaseExists()
+{
+    const QString targetDatabase = "Utilisateur";
+    const QString adminConnectionName = "pg_admin";
+
+    {
+        QSqlDatabase adminDb =
+            QSqlDatabase::addDatabase("QPSQL", adminConnectionName);
+
+        adminDb.setHostName("localhost");
+        adminDb.setDatabaseName("postgres");
+        adminDb.setUserName("postgres");
+        adminDb.setPassword("Jujux238");
+
+        if (!adminDb.open()) {
+            qCritical() << "[DB] Could not connect to PostgreSQL:"
+                << adminDb.lastError().text();
+            exit(1);
+        }
+
+        QSqlQuery query(adminDb);
+        query.prepare(
+            "SELECT 1 FROM pg_database WHERE datname = :databaseName"
+        );
+        query.bindValue(":databaseName", targetDatabase);
+
+        if (!query.exec()) {
+            qCritical() << "[DB] Database check failed:"
+                << query.lastError().text();
+            exit(1);
+        }
+
+        if (!query.next()) {
+            QString escapedName = targetDatabase;
+            escapedName.replace('"', "\"\"");
+
+            if (!query.exec(
+                QString("CREATE DATABASE \"%1\"").arg(escapedName))) {
+                qCritical() << "[DB] Database creation failed:"
+                    << query.lastError().text();
+                exit(1);
+            }
+
+            qInfo() << "[DB] Created database:" << targetDatabase;
+        }
+
+        adminDb.close();
+    }
+
+    QSqlDatabase::removeDatabase(adminConnectionName);
+}
+
 
 // we open a named PostgreSQL connection, to avoid later conflicts
 static QSqlDatabase openPgConnection(const QString& connName)
@@ -39,7 +92,7 @@ static QSqlDatabase openPgConnection(const QString& connName)
     db.setHostName("localhost");
     db.setDatabaseName("Utilisateur");
     db.setUserName("postgres");
-    db.setPassword("Jujux236");
+    db.setPassword("Jujux238");
 
     if (!db.open()) {
         qCritical() << "Database connection failed for" << connName << ":" << db.lastError().text();
@@ -54,14 +107,9 @@ int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
 
-    // test if postgresql works on local
-    {
-        QProcess process;
-        process.start("psql", QStringList{ "-U", "postgres", "-d", "Utilisateur", "-f", "schema.sql" });
-        process.waitForFinished();
-    }
+    ensureDatabaseExists();
 
-	// we allocate one DB session per schema (flights, weather)
+    // we allocate one DB session per schema (flights, weather)
     QSqlDatabase dbFlights = openPgConnection("pg_flights");
     QSqlDatabase dbWeather = openPgConnection("pg_weather");
     Q_UNUSED(dbWeather); // schema init is done once; weather upserts will use pg_weather elsewhere
@@ -171,6 +219,18 @@ int main(int argc, char* argv[])
         "  latitude DOUBLE PRECISION,"
         "  source TEXT,"
         "  PRIMARY KEY (icao24, ts)"
+        ");"
+    );
+
+    runQuery(query,
+        "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+    );
+
+    runQuery(query,
+        "SELECT create_hypertable("
+        "'flight_track_live', "
+        "by_range('ts'), "
+        "if_not_exists => TRUE"
         ");"
     );
 
