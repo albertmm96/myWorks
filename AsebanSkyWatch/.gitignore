@@ -1,3 +1,5 @@
 # Ignore all log/ directories recursively
 **/.vs/
 **/out/
+config/openSkyCredentialsPRIVATE.json
+config/openWeatherCredentialsPRIVATE.json
