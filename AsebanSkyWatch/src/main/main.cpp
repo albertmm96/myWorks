@@ -88,7 +88,7 @@ static QSqlDatabase openPgConnection(const QString& connName)
 
     QSqlDatabase db = QSqlDatabase::addDatabase("QPSQL", connName);
 
-	// configs, will move later to config file
+	// dev & beta config example, to move to separate protected class/folders before prod version
     db.setHostName("localhost");
     db.setDatabaseName("Utilisateur");
     db.setUserName("postgres");
