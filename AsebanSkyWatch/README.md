@@ -146,6 +146,18 @@ Not currently implemented:
 * Cloud deployment
 * Production monitoring
 
+
+## Screenshots
+
+### Main GUI & backend beta v1.2
+
+![Main Window](docs/screen1.jpg)
+
+### 
+
+![Initial Context Diagram](docs/initialContextDiagram.pdf)
+
+
 ## License
 
 No open-source license has currently been assigned.
