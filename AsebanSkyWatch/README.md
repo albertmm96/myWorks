@@ -17,18 +17,15 @@ The application retrieves live aircraft state vectors from the OpenSky Network, 
 
 ## Technology Stack
 
-* C++20
-* Qt 6
-* Qt Widgets
-* Qt Network
-* Qt WebEngine
-* Qt WebChannel
-* Qt Positioning
-* Qt SQL
-* CMake
-* OpenSky Network API
-* OpenWeather API
-* HTML, CSS, and JavaScript map interface
+* [C++20](https://isocpp.org/)
+* [Qt 6](https://doc.qt.io/qt-6/get-and-install-qt.html): Widgets, Network, SQL, WebChannel, Positioning and WebEngine
+* [CMake 3.21+](https://cmake.org/download/)
+* [PostgreSQL](https://www.postgresql.org/download/) with the [TimescaleDB extension](https://docs.timescale.com/self-hosted/latest/install/)
+* [Qt QPSQL driver](https://doc.qt.io/qt-6/sql-driver.html)
+* [OpenLayers](https://openlayers.org/doc/) map frontend
+* [OpenSky REST API](https://openskynetwork.github.io/opensky-api/rest.html)
+* [OpenWeather API](https://openweathermap.org/api)
+* HTML, CSS and JavaScript
 
 ## Architecture
 
@@ -88,34 +85,36 @@ AsebanSkyWatch/
 
 ## Requirements
 
-* CMake 3.21 or newer
-* C++20-compatible compiler
-* Qt 6 with:
+Before building, install:
 
-  * Core
-  * Gui
-  * Widgets
-  * Network
-  * SQL
-  * WebChannel
-  * Positioning
-  * WebEngineCore
-  * WebEngineWidgets
-* OpenSky API credentials
-* OpenWeather API key
+* A C++20 compiler. On Windows, use the [MSVC Desktop development with C++ workload](https://learn.microsoft.com/en-us/cpp/build/vscpp-step-0-installation).
+* [Qt 6](https://doc.qt.io/qt-6/qt-online-installation.html) with `Core`, `Gui`, `Widgets`, `Network`, `Sql`, `WebChannel`, `Positioning`, `WebEngineCore` and `WebEngineWidgets`.
+* [CMake 3.21+](https://cmake.org/download/).
+* [PostgreSQL](https://www.postgresql.org/download/) with [TimescaleDB](https://docs.timescale.com/self-hosted/latest/install/) enabled.
+* The Qt [QPSQL PostgreSQL driver](https://doc.qt.io/qt-6/sql-driver.html).
+* OpenSky OAuth client credentials and an OpenWeather API key.
+
+CMake configures and builds the application; it does not install these dependencies.
 
 ## Build
+
+After installing and configuring the dependencies:
 
 ```bash
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-The project can also be opened directly through `CMakeLists.txt` in Qt Creator.
+The project can also be opened through `CMakeLists.txt` in Qt Creator.
 
 ## Configuration
 
-The application reads OpenSky and OpenWeather credentials from JSON configuration files located in the `config` directory.
+The application expects:
+
+* `config/openSkyCredentials.json`
+* `config/openWeatherCredentials.json`
+* A local PostgreSQL instance with TimescaleDB enabled
+* Database connection settings matching the local PostgreSQL installation
 
 Credential files are excluded from version control.
 
@@ -129,18 +128,16 @@ This module is not functional, is not integrated into the active application wor
 
 Implemented:
 
-* OpenSky data acquisition
-* OpenWeather data acquisition
-* Qt desktop interface
-* Interactive map integration
-* Native-to-web communication
+* OpenSky and OpenWeather data acquisition
+* Qt desktop interface and embedded OpenLayers map
+* Native-to-web communication through Qt WebChannel
+* PostgreSQL storage with a TimescaleDB hypertable
 * Live aircraft and weather services
 * Geographic processing utilities
 
 Not currently implemented:
 
-* Historical trajectory persistence
-* Production database integration
+* Persistent historical trajectory workflow
 * Automated test suite
 * Release packaging
 * Cloud deployment
@@ -157,9 +154,9 @@ Not currently implemented:
 
 ![flights DB](docs/screen2.png)
 
-### 
+### Initial Context Diagram
 
-![Initial Context Diagram](docs/initialContextDiagram.pdf)
+[View the architecture context diagram (PDF)](docs/initialContextDiagram.pdf)
 
 
 ## License
