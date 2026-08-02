@@ -164,4 +164,4 @@ Not currently implemented:
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](https://github.com/albertmm96/myWorks/blob/main/LICENSE) for details.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/albertmm96/myWorks/blob/main/AsebanSkyWatch/LICENSE) for details.
