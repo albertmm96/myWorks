@@ -153,6 +153,10 @@ Not currently implemented:
 
 ![Main Window](docs/screen1.jpg)
 
+### TimescaleDB underlying hypertable example
+
+![flights DB](docs/screen2.jpg)
+
 ### 
 
 ![Initial Context Diagram](docs/initialContextDiagram.pdf)
