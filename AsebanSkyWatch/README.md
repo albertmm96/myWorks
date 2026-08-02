@@ -160,4 +160,4 @@ Not currently implemented:
 
 ## License
 
-No open-source license has currently been assigned.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
