@@ -155,7 +155,7 @@ Not currently implemented:
 
 ### TimescaleDB underlying hypertable example
 
-![flights DB](docs/screen2.jpg)
+![flights DB](docs/screen2.png)
 
 ### 
 
