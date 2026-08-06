@@ -4,7 +4,7 @@ Aseban SkyWatch is a C++20 desktop application for real-time aircraft and weathe
 
 The application retrieves live aircraft state vectors from the OpenSky Network, combines them with OpenWeather data, and displays the results through an interactive web map embedded in a Qt interface.
 
-The main interest of this backend project is its lightweight memory space management for data ingestion (compared to a classic persistent relational model), with the design choice of making the UI the unique source of truth that takes advantage of TimescaleDB's elasticity.  
+The main interest of this backend project lies in its lightweight state management for data ingestion, compared with a conventional persistent relational architecture. By making the UI the primary source of truth, the backend remains largely stateless and leverages TimescaleDB for scalable time-series storage.
 
 ## Features
 
