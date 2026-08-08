@@ -11,7 +11,7 @@ For each aircraft:
 
 $$
 B_a =
-\operatorname{clamp}
+\mathrm{clamp}
 \left(
 0.45f_1 + 0.35f_2 + 0.15f_3 + 0.05f_4
 \right)
@@ -29,12 +29,12 @@ and aggregated as:
 
 $$
 B_T =
-\frac{\sum_i w_iB_{a,i}}
+\frac{\sum_i w_i B_{a,i}}
 {\sum_i w_i}
 $$
 
-Aircraft and weather evidence are finally blended according to available
-aircraft sample density:
+Aircraft and weather evidence are blended according to available aircraft
+sample density:
 
 $$
 \lambda =
@@ -43,7 +43,7 @@ $$
 
 $$
 TPI =
-\operatorname{clamp}
+\mathrm{clamp}
 \left(
 \lambda B_T + (1-\lambda)W_T
 \right)
