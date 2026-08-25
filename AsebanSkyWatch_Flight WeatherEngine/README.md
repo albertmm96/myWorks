@@ -1,19 +1,15 @@
 # Aseban SkyWatch
 
-Aseban SkyWatch is a C++20 desktop application for real-time aircraft and weather visualization.
+A lightweight **C++20 data and simulation engine** for real-time aircraft, weather, and heterogeneous time-series data.
 
-The application retrieves live aircraft state vectors from the OpenSky Network, combines them with OpenWeather data, and displays the results through an interactive web map embedded in a Qt interface.
+Built around a largely stateless backend with **TimescaleDB** persistence, it provides live ingestion, visualization, and a foundation for **stochastic simulation and probabilistic aviation analysis**—as an open-source alternative to specialized commercial engines.
+
 
 ## Features
 
-* Live aircraft state acquisition from OpenSky
-* Weather data acquisition from OpenWeather
-* Interactive aircraft visualization on a web-based map
-* Geographic area and map-tile calculations
-* Native C++ and JavaScript communication through Qt WebChannel
-* Asynchronous HTTP requests using Qt Network
-* Aircraft and weather data models
-* Modular fetcher, service, controller, and view components
+- Live aircraft + weather ingestion and interactive map visualization
+- Geographic/tile processing with aircraft and weather data models
+- Modular Qt/C++ backend with async networking and WebChannel JS integration
 
 ## Technology Stack
 
@@ -120,9 +116,7 @@ Credential files are excluded from version control.
 
 ## Experimental TPI Module
 
-The repository contains an experimental TPI computation prototype based on rolling windows and robust statistical calculations.
-
-This module is not functional, is not integrated into the active application workflow, and is no longer under development.
+Experimental rolling-window TPI prototype using robust statistics, providing a foundation for future integration, refinement, and probabilistic analysis.
 
 ## Current Status
 
