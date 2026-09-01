@@ -1,5 +1,7 @@
 # Ignore all log/ directories recursively
 **/.vs/
 **/out/
+**/CMakeLists.txt.user
+**/cpp.hint
 config/openSkyCredentialsPRIVATE.json
 config/openWeatherCredentialsPRIVATE.json
